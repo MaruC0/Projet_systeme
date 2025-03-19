@@ -13,12 +13,15 @@ bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
     printf("ATTENTION str1 = %s, str2 = %s ATTENTION\n", str1, str2);
     int i=0;
-    while(str1[i] != '\0'){
+    if(str1[0] == '\0' && str2[0] == '\0'){ // Cas deux string vide.
+        return true;
+    }
+    if(str1[0] == '\0' || str2[0] == '\0'){ // Cas une des deux string vide
+        return false;
+    }
+    while(str1[i] != '\0'){ // Tant qu'on a pas fini de lire str1
         printf("str 1 : %d, str2 : %d\n", str1[i], str2[i]);
-        if (str1[i] != str2[i] && ((int)str1[i] != 32 || (int)str2[i] != 0)){
-            //if ((int)str1[i] != 0 || (int)str2[i] != 32){
-            
-            //} 
+        if ((str1[i] != str2[i] && !((int)str1[i] == 32 && (int)str2[i] == 0)) || str2[i] == '\0'){ // Si les caractères sont différents et que c'est pas l'espace ou que str2 est plus petit que str1
             return false;
         }
         i += 1; 
