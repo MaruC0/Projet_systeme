@@ -31,29 +31,39 @@ bool compare(char* str1, char* str2){
 
 void changeDirectory(char* path){
     printf("Path : %s\n", path);
-    if (path == NULL){
+    if (path[0] == '\0'){      // Juste cd
         strcpy(currentpath,"/~");
-    } else if(path[0] == '.' && strlen(path) == 1) {
-        printf("Path : BONJOUR %s\n", path);
-        return;
-    } else if(path == "..") {
-        // TODO Si à la racine, ne rien faire, sinon remonter
-        return;
-    } else if(path[0] == '/'){ // Chemin absolu
-        struct stat stats;
-        if (stat(path, &stats)){
-            strcpy(currentpath,path);
+    } else if(path[0] == ' '){ // cd avec chemin
+        path = &path[1];    // On coupe l'espace
+        if(path[0] == '.'){ 
+            if(path[1] == '\0'){    // Répertoire actuel
+                printf("Path : BONJOUR %s\n", path);
+                return;
+            } else if(path[1] == '.' && path[2] == '\0') { // Répertoire père
+                // TODO Si à la racine, ne rien faire, sinon remonter
+                return;
+            } else{           // Fichier ou dossier commençant par .
+                printf("Chemin saisi invalide.\n");
+            }
+        } else if(path[0] == '/'){ // Chemin absolu
+            struct stat stats;
+            if (stat(path, &stats)){
+                strcpy(currentpath,path);
+            }
+        } else { // Chemin relatif
+            char* finalpath = malloc(strlen(path) + strlen(currentpath) + 2);
+            strcpy(finalpath,currentpath);
+            strcat(finalpath,"/");
+            strcat(finalpath,path);
+            struct stat stats;
+            if (stat(finalpath, &stats) == 0){
+                strcpy(currentpath,finalpath);
+            }
+            free(finalpath);
         }
-    } else { // Chemin relatif
-        char* finalpath = malloc(strlen(path) + strlen(currentpath) + 2);
-        strcpy(finalpath,currentpath);
-        strcat(finalpath,"/");
-        strcat(finalpath,path);
-        struct stat stats;
-        if (stat(finalpath, &stats) == 0){
-            strcpy(currentpath,finalpath);
-        }
-        free(finalpath);
+    }
+    else{   // Si c'est n'importe quoi qui commence par cd.
+        printf("Commande invalide.\n");
     }
 }
 
@@ -75,14 +85,14 @@ void cutstr(char* str){
 
 int main(int argc, char *argv[]){
     char entry[200];
-    fgets(entry,sizeof(entry),stdin); // Il faut cut le string au \n
-    cutstr(entry);
+    fgets(entry,sizeof(entry),stdin); // Les espaces sont bien des ascii 32 avec le fgets.
+    cutstr(entry);                    // Est-ce qu'on veut que cd et des espaces amène à /~
     //scanf("%s",entry); // PROBLEME : S'ARRETE AUX ESPACES
 
     getcwd(currentpath,200); // récupère le path actuel
 
-    if(compare("cd ",entry)) { // NE MARHCE PAS AVEC CD + RIEN
-        char* start = &entry[3];
+    if(compare("cd ", entry)) {
+        char* start = &entry[2]; // On coupe le cd
         printf("Réussi : entry = %s\n", start);
         changeDirectory(start); // IL FAUT COUPER LE CD
     } else if(compare("./",entry)) {
