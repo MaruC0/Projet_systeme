@@ -62,7 +62,10 @@ void cutstr(char* str){
     while(str[i] != '\n'){
         i++;
     }
-    str[i] = '\0';
+    while((int)str[i] == 0 || str[i] == ' '){
+        i--;
+    }
+    str[i+1] = '\0';
 }
 
 int main(int argc, char *argv[]){
