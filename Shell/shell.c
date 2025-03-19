@@ -90,13 +90,13 @@ int main(int argc, char *argv[]){
         if (pid==0) { /* child process */
             char* name = &entry[2];
             printf("name %s\n", name);
-            char* path = malloc(sizeof(entry) + sizeof(currentpath) + 1);
+            /*char* path = malloc(sizeof(entry) + sizeof(currentpath) + 1); // On avait mis ça mais ça me parait inutile ?
             strcpy(path,currentpath);
             strcat(path,"/");
-            strcat(path,name);
+            strcat(path,name);*/
             char *argv2[]={name,NULL};
             execv(argv[1],argv2);
-            free(path); // A relocaliser ? 
+            //free(path); // A relocaliser ? 
             exit(127); /* only if execv fails */
         }
         else { /* pid!=0; parent process */
