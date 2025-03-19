@@ -61,9 +61,10 @@ void cutstr(char* str){
     // Formate la string en pour retirer tous les espaces et retour chariot en fin de string
     int i=0;
     // Parcours jusqu'au retour chariot
-    while(str[i] != '\n' || str[i] != '\0'){
+    while(str[i] != '\n' && str[i] != '\0'){
         i++;
     }
+    i--;
     // Parcours à l'envers tant qu'il y a des caractères vides ou des espaces
     while((int)str[i] == 0 || str[i] == ' '){
         i--;
