@@ -58,13 +58,17 @@ void changeDirectory(char* path){
 }
 
 void cutstr(char* str){
+    // Formate la string en pour retirer tous les espaces et retour chariot en fin de string
     int i=0;
-    while(str[i] != '\n'){
+    // Parcours jusqu'au retour chariot
+    while(str[i] != '\n' || str[i] != '\0'){
         i++;
     }
+    // Parcours à l'envers tant qu'il y a des caractères vides ou des espaces
     while((int)str[i] == 0 || str[i] == ' '){
         i--;
     }
+    // Placement de la balise finale
     str[i+1] = '\0';
 }
 
