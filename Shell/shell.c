@@ -1,17 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <string.h>
-#include <stdbool.h>
 #include <sys/stat.h>
 
 char currentpath[200];
 
 bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
-    printf("ATTENTION str1 = %s, str2 = %s ATTENTION\n", str1, str2);
     int i=0;
     if(str1[0] == '\0' && str2[0] == '\0'){ // Cas deux string vide.
         return true;
@@ -21,7 +20,8 @@ bool compare(char* str1, char* str2){
     }
     while(str1[i] != '\0'){ // Tant qu'on a pas fini de lire str1
         printf("str 1 : %d, str2 : %d\n", str1[i], str2[i]);
-        if ((str1[i] != str2[i] && !((int)str1[i] == 32 && (int)str2[i] == 0)) || str2[i] == '\0'){ // Si les caractères sont différents et que c'est pas l'espace ou que str2 est plus petit que str1
+        // Si les caractères sont différents ou str2 est plus petit que str1
+        if (str1[i] != str2[i] || str2[i] == '\0'){
             return false;
         }
         i += 1; 
@@ -74,44 +74,48 @@ void cutstr(char* str){
     while(str[i] != '\n' && str[i] != '\0'){
         i++;
     }
-    i--;
-    // Parcours à l'envers tant qu'il y a des caractères vides ou des espaces
-    while((int)str[i] == 0 || str[i] == ' '){
+    // Parcours à l'envers tant qu'il y a des espaces
+    while(str[i-1] == ' '){
         i--;
     }
     // Placement de la balise finale
-    str[i+1] = '\0';
+    str[i] = '\0';
 }
 
 int main(int argc, char *argv[]){
     char entry[200];
-    fgets(entry,sizeof(entry),stdin); // Les espaces sont bien des ascii 32 avec le fgets.
-    cutstr(entry);                    // Est-ce qu'on veut que cd et des espaces amène à /~
-    //scanf("%s",entry); // PROBLEME : S'ARRETE AUX ESPACES
+    fgets(entry,sizeof(entry), stdin);
+    cutstr(entry);
 
-    getcwd(currentpath,200); // récupère le path actuel
+    getcwd(currentpath, 200); // récupère le path actuel
 
     if(compare("cd ", entry)) {
-        char* start = &entry[2]; // On coupe le cd
-        printf("Réussi : entry = %s\n", start);
-        changeDirectory(start); // IL FAUT COUPER LE CD
-    } else if(compare("./",entry)) {
+        // Recherche de l'indice du début du path
+        int start = 3;
+        while(entry[start] == ' '){
+            start++;
+        }
+        // Recherche de l'indice de fin du path pour le message d'erreur
+        // si plusieurs paramètres ont été donnés à cd
+        int end = start + 1;
+        while (entry[end] != ' ' && entry[end] != '\0') {
+            end++;
+        }
+        entry[end] = '\0';
+        if(chdir(&entry[start]) != 0){
+            printf("cd: Ne peut pas aller au dossier %s", &entry[start]);
+        }
+    } else if(compare("./", entry)) {
         /*Spawn a child to run the program.*/
-        pid_t pid=fork();
-        if (pid==0) { /* child process */
+        pid_t pid = fork();
+        if (pid == 0) { /* child process */
             char* name = &entry[2];
             printf("name %s\n", name);
-            /*char* path = malloc(sizeof(entry) + sizeof(currentpath) + 1); // On avait mis ça mais ça me parait inutile ?
-            strcpy(path,currentpath);
-            strcat(path,"/");
-            strcat(path,name);*/
-            char *argv2[]={name,NULL};
-            execv(argv[1],argv2);
-            //free(path); // A relocaliser ? 
+            char *argv2[] = {name, NULL};
+            execv(argv[1], argv2);
             exit(127); /* only if execv fails */
-        }
-        else { /* pid!=0; parent process */
-            waitpid(pid,0,0); /* wait for child to exit */
+        } else { /* pid!=0; parent process */
+            waitpid(pid, 0, 0); /* wait for child to exit */
         }
     }
 
