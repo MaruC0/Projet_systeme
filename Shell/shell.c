@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+//#include <sys/wait.h>
 #include <sys/stat.h>
 
 char currentpath[200];
@@ -27,6 +27,11 @@ bool compare(char* str1, char* str2){
         i += 1; 
     }
     return true;
+}
+
+void askInput(char* entry){
+    printf("%s $ ", currentpath);
+    fgets(entry, sizeof(entry), stdin);
 }
 
 void changeDirectory(char* path){
@@ -83,43 +88,44 @@ void cutstr(char* str){
 }
 
 int main(int argc, char *argv[]){
-    char entry[200];
-    fgets(entry,sizeof(entry), stdin);
-    cutstr(entry);
 
-    getcwd(currentpath, 200); // récupère le path actuel
+    char* entry;
+    do {
+        getcwd(currentpath, 200);
+        askInput(&entry);
+        cutstr(entry);
 
-    if(compare("cd ", entry)) {
-        // Recherche de l'indice du début du path
-        int start = 3;
-        while(entry[start] == ' '){
-            start++;
+        if(compare("cd ", entry)) {
+            // Recherche de l'indice du début du path
+            int start = 3;
+            while(entry[start] == ' '){
+                start++;
+            }
+            // Recherche de l'indice de fin du path pour le message d'erreur
+            // si plusieurs paramètres ont été donnés à cd
+            int end = start + 1;
+            while (entry[end] != ' ' && entry[end] != '\0') {
+                end++;
+            }
+            entry[end] = '\0';
+            if(chdir(&entry[start]) != 0){
+                printf("cd: Ne peut pas aller au dossier %s", &entry[start]);
+            }
+        } else if(compare("./", entry)) {
+            /*Spawn a child to run the program.*/
+            pid_t pid = fork();
+            if (pid == 0) { /* child process */
+                char* name = &entry[2];
+                printf("name %s\n", name);
+                char *argv2[] = {name, NULL};
+                execv(argv[1], argv2);
+                exit(127); /* only if execv fails */
+            } else { /* pid!=0; parent process */
+                waitpid(pid, 0, 0); /* wait for child to exit */
+            }
         }
-        // Recherche de l'indice de fin du path pour le message d'erreur
-        // si plusieurs paramètres ont été donnés à cd
-        int end = start + 1;
-        while (entry[end] != ' ' && entry[end] != '\0') {
-            end++;
-        }
-        entry[end] = '\0';
-        if(chdir(&entry[start]) != 0){
-            printf("cd: Ne peut pas aller au dossier %s", &entry[start]);
-        }
-    } else if(compare("./", entry)) {
-        /*Spawn a child to run the program.*/
-        pid_t pid = fork();
-        if (pid == 0) { /* child process */
-            char* name = &entry[2];
-            printf("name %s\n", name);
-            char *argv2[] = {name, NULL};
-            execv(argv[1], argv2);
-            exit(127); /* only if execv fails */
-        } else { /* pid!=0; parent process */
-            waitpid(pid, 0, 0); /* wait for child to exit */
-        }
-    }
 
-    printf("Le path actuel est %s\n", currentpath);
+    } while(strcmp(entry, "exit"));
     
     return 0;
 }
