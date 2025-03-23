@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
-//#include <sys/wait.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 
 char currentpath[200];
@@ -19,7 +19,6 @@ bool compare(char* str1, char* str2){
         return false;
     }
     while(str1[i] != '\0'){ // Tant qu'on a pas fini de lire str1
-        printf("str 1 : %d, str2 : %d\n", str1[i], str2[i]);
         // Si les caractères sont différents ou str2 est plus petit que str1
         if (str1[i] != str2[i] || str2[i] == '\0'){
             return false;
@@ -30,6 +29,8 @@ bool compare(char* str1, char* str2){
 }
 
 void askInput(char* entry){
+    /* Affiche le path actuel, demande une entrée,
+    et la place dans la variable passée en paramètre. */
     printf("%s $ ", currentpath);
     fgets(entry, sizeof(entry), stdin);
 }
