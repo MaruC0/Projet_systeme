@@ -28,11 +28,11 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-void askInput(char* entry){
+void askInput(char* entry, unsigned int maxLength){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
     printf("%s $ ", currentpath);
-    fgets(entry, sizeof(entry), stdin);
+    fgets(entry, maxLength, stdin);
 }
 
 void changeDirectory(char* path){
@@ -90,10 +90,10 @@ void cutstr(char* str){
 
 int main(int argc, char *argv[]){
 
-    char* entry;
+    char entry[200];
     do {
         getcwd(currentpath, 200);
-        askInput(&entry);
+        askInput(entry, sizeof(entry));
         cutstr(entry);
 
         if(compare("cd ", entry)) {
