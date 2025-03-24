@@ -7,6 +7,10 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+
+#define ENTRY_SIZE 500
+#define PATH_SIZE 500
+
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
 #define KGRN  "\x1B[32m"
@@ -16,7 +20,7 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
-char currentpath[200];
+char currentpath[PATH_SIZE];
 
 bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
@@ -37,42 +41,42 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-void askInput(char* entry, unsigned int maxLength){
+void askInput(char* entry){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
-    printf("\x1b[36m%s\x1b[0m$ ", currentpath);
-    fgets(entry, maxLength, stdin);
+    printf("%s%s%s$ ", KCYN, currentpath, KNRM);
+    fgets(entry, PATH_SIZE, stdin);
 }
 
 int getArgs(char* entry, char* tab[]){
-    const char * separators = " \n";
+    const char* separators = " \n";
     int i = 0;
-    char * strToken = strtok ( entry, separators );
-    while ( strToken != NULL ) {
+    char* strToken = strtok(entry, separators);
+    while (strToken != NULL) {
         tab[i] = strToken;
-        // printf ( "%s ", tab[i] );
         // On demande le token suivant.
-        strToken = strtok ( NULL, separators );
+        strToken = strtok(NULL, separators);
         i++;
     }
-    tab[i] = '\0';
     return i;
 }
 
 int main(int argc, char *argv[]){
 
-    char entry[200];
-    char *args[100]; // Tableau d'arguments en entrée
+    char entry[ENTRY_SIZE];
+    char* args[100]; // Tableau d'arguments en entrée
     int nbargs = 0;
     
-    do {
-        getcwd(currentpath, 200);
-        askInput(entry, sizeof(entry));
-        nbargs = getArgs(entry,args);
+    while(true) {
+        getcwd(currentpath, PATH_SIZE);
+        askInput(entry);
+        nbargs = getArgs(entry, args);
 
-        if(compare("cd", args[0])) {
+        if(strcmp(args[0], "exit") == 0) {
+                break;
+        } else if(strcmp("cd", args[0]) == 0) {
             if(nbargs > 2){
-                printf("cd: too many arguments'\n");
+                printf("cd: too many arguments\n");
             } else if(nbargs == 1){
                 chdir(getenv("HOME"));
             } else {
@@ -95,9 +99,11 @@ int main(int argc, char *argv[]){
             } else { /* pid!=0; parent process */
                 waitpid(pid, 0, 0); /* wait for child to exit */
             }
+        } else {
+            printf("%s : command not found\n", entry);
         }
 
-    } while(strcmp(args[0], "exit"));
+    }
     
     return 0;
 }
