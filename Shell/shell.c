@@ -40,69 +40,64 @@ bool compare(char* str1, char* str2){
 void askInput(char* entry, unsigned int maxLength){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
-    printf("%s $ ", currentpath);
+    printf("\x1b[36m%s\x1b[0m$ ", currentpath);
     fgets(entry, maxLength, stdin);
 }
 
-void cutstr(char* str){
-    // Formate la string en pour retirer tous les espaces et retour chariot en fin de string
-    int i=0;
-    // Parcours jusqu'au retour chariot
-    while(str[i] != '\n' && str[i] != '\0'){
-        i++;
-    }
-    // Parcours à l'envers tant qu'il y a des espaces
-    while(str[i-1] == ' '){
-        i--;
-    }
-    // Placement de la balise finale
-    str[i] = '\0';
-}
-
-void getArgs(char* entry, char* tab[]){
+int getArgs(char* entry, char* tab[]){
     const char * separators = " \n";
     int i = 0;
     char * strToken = strtok ( entry, separators );
     while ( strToken != NULL ) {
         tab[i] = strToken;
-        printf ( "%s ", tab[i] );
+        // printf ( "%s ", tab[i] );
         // On demande le token suivant.
         strToken = strtok ( NULL, separators );
         i++;
     }
-    printf("\n");
+    tab[i] = '\0';
+    return i;
 }
 
 int main(int argc, char *argv[]){
 
     char entry[200];
-    char *tab[100];
+    char *args[100]; // Tableau d'arguments en entrée
+    int nbargs = 0;
     
     do {
         getcwd(currentpath, 200);
         askInput(entry, sizeof(entry));
-        getArgs(entry,tab);
+        nbargs = getArgs(entry,args);
 
-        if(compare("cd", tab[0])) {
-            printf("%s\n", tab[1]);
-            if(chdir(tab[1]) != 0){
-                printf("cd: Ne peut pas aller au dossier %s", tab[1]);
+        if(compare("cd", args[0])) {
+            if(nbargs > 2){
+                printf("cd: too many arguments'\n");
+            } else if(nbargs == 1){
+                chdir(getenv("HOME"));
+            } else {
+                if(chdir(args[1]) != 0){
+                    printf("cd: %s: No such file or directory\n", args[1]);
+                }
             }
-        } else if(compare("./", entry)) {
+        } else if(compare("./", args[0])) {
             /*Spawn a child to run the program.*/
             pid_t pid = fork();
             if (pid == 0) { /* child process */
-                char* name = &entry[2];
-                printf("name %s\n", name);
-                char *argv2[] = {name, NULL};
-                execv(argv[1], argv2);
+                char* name = &args[0][2];
+                char* path = malloc(sizeof(currentpath) + sizeof(name) + 1);
+                strcpy(path,currentpath);
+                strcat(path,"/");
+                strcat(path,name);
+                char *argv2[] = {path, NULL}; // Tableau pour execv
+                execv(argv2[0], argv2);
                 exit(127); /* only if execv fails */
             } else { /* pid!=0; parent process */
                 waitpid(pid, 0, 0); /* wait for child to exit */
             }
         }
 
-    } while(strcmp(entry, "exit"));
+    } while(strcmp(args[0], "exit"));
     
     return 0;
 }
