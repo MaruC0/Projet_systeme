@@ -28,49 +28,11 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-void askInput(char* entry){
+void askInput(char* entry, unsigned int maxLength){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
     printf("%s $ ", currentpath);
-    fgets(entry, sizeof(entry), stdin);
-}
-
-void changeDirectory(char* path){
-    printf("Path : %s\n", path);
-    if (path[0] == '\0'){      // Juste cd
-        strcpy(currentpath,"/~");
-    } else if(path[0] == ' '){ // cd avec chemin
-        path = &path[1];    // On coupe l'espace
-        if(path[0] == '.'){ 
-            if(path[1] == '\0'){    // Répertoire actuel
-                printf("Path : BONJOUR %s\n", path);
-                return;
-            } else if(path[1] == '.' && path[2] == '\0') { // Répertoire père
-                // TODO Si à la racine, ne rien faire, sinon remonter
-                return;
-            } else{           // Fichier ou dossier commençant par .
-                printf("Chemin saisi invalide.\n");
-            }
-        } else if(path[0] == '/'){ // Chemin absolu
-            struct stat stats;
-            if (stat(path, &stats)){
-                strcpy(currentpath,path);
-            }
-        } else { // Chemin relatif
-            char* finalpath = malloc(strlen(path) + strlen(currentpath) + 2);
-            strcpy(finalpath,currentpath);
-            strcat(finalpath,"/");
-            strcat(finalpath,path);
-            struct stat stats;
-            if (stat(finalpath, &stats) == 0){
-                strcpy(currentpath,finalpath);
-            }
-            free(finalpath);
-        }
-    }
-    else{   // Si c'est n'importe quoi qui commence par cd.
-        printf("Commande invalide.\n");
-    }
+    fgets(entry, maxLength, stdin);
 }
 
 void cutstr(char* str){
@@ -88,29 +50,34 @@ void cutstr(char* str){
     str[i] = '\0';
 }
 
+void getArgs(char* entry, char* tab[]){
+    const char * separators = " \n";
+    int i = 0;
+    char * strToken = strtok ( entry, separators );
+    while ( strToken != NULL ) {
+        tab[i] = strToken;
+        printf ( "%s ", tab[i] );
+        // On demande le token suivant.
+        strToken = strtok ( NULL, separators );
+        i++;
+    }
+    printf("\n");
+}
+
 int main(int argc, char *argv[]){
 
-    char* entry;
+    char entry[200];
+    char *tab[100];
+    
     do {
         getcwd(currentpath, 200);
-        askInput(&entry);
-        cutstr(entry);
+        askInput(entry, sizeof(entry));
+        getArgs(entry,tab);
 
-        if(compare("cd ", entry)) {
-            // Recherche de l'indice du début du path
-            int start = 3;
-            while(entry[start] == ' '){
-                start++;
-            }
-            // Recherche de l'indice de fin du path pour le message d'erreur
-            // si plusieurs paramètres ont été donnés à cd
-            int end = start + 1;
-            while (entry[end] != ' ' && entry[end] != '\0') {
-                end++;
-            }
-            entry[end] = '\0';
-            if(chdir(&entry[start]) != 0){
-                printf("cd: Ne peut pas aller au dossier %s", &entry[start]);
+        if(compare("cd", tab[0])) {
+            printf("%s\n", tab[1]);
+            if(chdir(tab[1]) != 0){
+                printf("cd: Ne peut pas aller au dossier %s", tab[1]);
             }
         } else if(compare("./", entry)) {
             /*Spawn a child to run the program.*/
