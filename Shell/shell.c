@@ -64,7 +64,7 @@ int getArgs(char* entry, char* tab[]){
 int main(int argc, char *argv[]){
 
     char entry[ENTRY_SIZE];
-    char* args[100]; // Tableau d'arguments en entrée
+    char* args[ENTRY_SIZE / 2]; // Tableau d'arguments en entrée
     int nbargs = 0;
     
     while(true) {
@@ -91,10 +91,10 @@ int main(int argc, char *argv[]){
                 char* name = &args[0][2];
                 char* path = malloc(sizeof(currentpath) + sizeof(name) + 1);
                 strcpy(path,currentpath);
-                strcat(path,"/");
-                strcat(path,name);
-                char *argv2[] = {path, NULL}; // Tableau pour execv
-                execv(argv2[0], argv2);
+                strcat(path, "/");
+                strcat(path, name);
+                char* argv2[] = {path, NULL}; // Tableau pour execv
+                execv(path, argv2);
                 exit(127); /* only if execv fails */
             } else { /* pid!=0; parent process */
                 waitpid(pid, 0, 0); /* wait for child to exit */
