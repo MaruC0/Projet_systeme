@@ -1,17 +1,29 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <string.h>
-#include <stdbool.h>
 #include <sys/stat.h>
 
-char currentpath[200];
+
+#define ENTRY_SIZE 500
+#define PATH_SIZE 500
+
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
+
+char currentpath[PATH_SIZE];
 
 bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
-    printf("ATTENTION str1 = %s, str2 = %s ATTENTION\n", str1, str2);
     int i=0;
     if(str1[0] == '\0' && str2[0] == '\0'){ // Cas deux string vide.
         return true;
@@ -20,8 +32,8 @@ bool compare(char* str1, char* str2){
         return false;
     }
     while(str1[i] != '\0'){ // Tant qu'on a pas fini de lire str1
-        printf("str 1 : %d, str2 : %d\n", str1[i], str2[i]);
-        if ((str1[i] != str2[i] && !((int)str1[i] == 32 && (int)str2[i] == 0)) || str2[i] == '\0'){ // Si les caractères sont différents et que c'est pas l'espace ou que str2 est plus petit que str1
+        // Si les caractères sont différents ou str2 est plus petit que str1
+        if (str1[i] != str2[i] || str2[i] == '\0'){
             return false;
         }
         i += 1; 
@@ -29,93 +41,69 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-void changeDirectory(char* path){
-    printf("Path : %s\n", path);
-    if (path[0] == '\0'){      // Juste cd
-        strcpy(currentpath,"/~");
-    } else if(path[0] == ' '){ // cd avec chemin
-        path = &path[1];    // On coupe l'espace
-        if(path[0] == '.'){ 
-            if(path[1] == '\0'){    // Répertoire actuel
-                printf("Path : BONJOUR %s\n", path);
-                return;
-            } else if(path[1] == '.' && path[2] == '\0') { // Répertoire père
-                // TODO Si à la racine, ne rien faire, sinon remonter
-                return;
-            } else{           // Fichier ou dossier commençant par .
-                printf("Chemin saisi invalide.\n");
-            }
-        } else if(path[0] == '/'){ // Chemin absolu
-            struct stat stats;
-            if (stat(path, &stats)){
-                strcpy(currentpath,path);
-            }
-        } else { // Chemin relatif
-            char* finalpath = malloc(strlen(path) + strlen(currentpath) + 2);
-            strcpy(finalpath,currentpath);
-            strcat(finalpath,"/");
-            strcat(finalpath,path);
-            struct stat stats;
-            if (stat(finalpath, &stats) == 0){
-                strcpy(currentpath,finalpath);
-            }
-            free(finalpath);
-        }
-    }
-    else{   // Si c'est n'importe quoi qui commence par cd.
-        printf("Commande invalide.\n");
-    }
+void askInput(char* entry){
+    /* Affiche le path actuel, demande une entrée,
+    et la place dans la variable passée en paramètre. */
+    printf("%s%s%s$ ", KCYN, currentpath, KNRM);
+    fgets(entry, PATH_SIZE, stdin);
 }
 
-void cutstr(char* str){
-    // Formate la string en pour retirer tous les espaces et retour chariot en fin de string
-    int i=0;
-    // Parcours jusqu'au retour chariot
-    while(str[i] != '\n' && str[i] != '\0'){
+int getArgs(char* entry, char* tab[]){
+    const char* separators = " \n";
+    int i = 0;
+    char* strToken = strtok(entry, separators);
+    while (strToken != NULL) {
+        tab[i] = strToken;
+        // On demande le token suivant.
+        strToken = strtok(NULL, separators);
         i++;
     }
-    i--;
-    // Parcours à l'envers tant qu'il y a des caractères vides ou des espaces
-    while((int)str[i] == 0 || str[i] == ' '){
-        i--;
-    }
-    // Placement de la balise finale
-    str[i+1] = '\0';
+    return i;
 }
 
 int main(int argc, char *argv[]){
-    char entry[200];
-    fgets(entry,sizeof(entry),stdin); // Les espaces sont bien des ascii 32 avec le fgets.
-    cutstr(entry);                    // Est-ce qu'on veut que cd et des espaces amène à /~
-    //scanf("%s",entry); // PROBLEME : S'ARRETE AUX ESPACES
 
-    getcwd(currentpath,200); // récupère le path actuel
+    char entry[ENTRY_SIZE];
+    char* args[100]; // Tableau d'arguments en entrée
+    int nbargs = 0;
+    
+    while(true) {
+        getcwd(currentpath, PATH_SIZE);
+        askInput(entry);
+        nbargs = getArgs(entry, args);
 
-    if(compare("cd ", entry)) {
-        char* start = &entry[2]; // On coupe le cd
-        printf("Réussi : entry = %s\n", start);
-        changeDirectory(start); // IL FAUT COUPER LE CD
-    } else if(compare("./",entry)) {
-        /*Spawn a child to run the program.*/
-        pid_t pid=fork();
-        if (pid==0) { /* child process */
-            char* name = &entry[2];
-            printf("name %s\n", name);
-            /*char* path = malloc(sizeof(entry) + sizeof(currentpath) + 1); // On avait mis ça mais ça me parait inutile ?
-            strcpy(path,currentpath);
-            strcat(path,"/");
-            strcat(path,name);*/
-            char *argv2[]={name,NULL};
-            execv(argv[1],argv2);
-            //free(path); // A relocaliser ? 
-            exit(127); /* only if execv fails */
+        if(strcmp(args[0], "exit") == 0) {
+                break;
+        } else if(strcmp("cd", args[0]) == 0) {
+            if(nbargs > 2){
+                printf("cd: too many arguments\n");
+            } else if(nbargs == 1){
+                chdir(getenv("HOME"));
+            } else {
+                if(chdir(args[1]) != 0){
+                    printf("cd: %s: No such file or directory\n", args[1]);
+                }
+            }
+        } else if(compare("./", args[0])) {
+            /*Spawn a child to run the program.*/
+            pid_t pid = fork();
+            if (pid == 0) { /* child process */
+                char* name = &args[0][2];
+                char* path = malloc(sizeof(currentpath) + sizeof(name) + 1);
+                strcpy(path,currentpath);
+                strcat(path,"/");
+                strcat(path,name);
+                char *argv2[] = {path, NULL}; // Tableau pour execv
+                execv(argv2[0], argv2);
+                exit(127); /* only if execv fails */
+            } else { /* pid!=0; parent process */
+                waitpid(pid, 0, 0); /* wait for child to exit */
+            }
+        } else {
+            printf("%s : command not found\n", entry);
         }
-        else { /* pid!=0; parent process */
-            waitpid(pid,0,0); /* wait for child to exit */
-        }
+
     }
-
-    printf("Le path actuel est %s\n", currentpath);
     
     return 0;
 }
