@@ -97,9 +97,22 @@ int main(int argc, char *argv[]){
                 strcat(path, name);
                 char* argv2[] = {path, NULL}; // Tableau pour execv
                 execv(path, argv2);
+                printf("%s: Nom de l'erreur.\n",command);
                 exit(127); /* only if execv fails */
             } else { /* pid!=0; parent process */
                 waitpid(pid, 0, 0); /* wait for child to exit */
+            }
+        } else if(command[0] == '/'){
+            pid_t pid = fork();
+            if (pid == 0) {
+                char* path = &command[1];
+                char *argv2[] = {path, NULL};
+                execv(path, argv2);
+                printf("%s: Nom de l'erreur.\n", command);
+                exit(127); /* only if execv fails */
+            }
+            else{
+                waitpid(pid, 0, 0);
             }
         } else {
             printf("%s : command not found\n", entry);
