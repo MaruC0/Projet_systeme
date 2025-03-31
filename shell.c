@@ -95,15 +95,9 @@ int main(int argc, char *argv[]){
                 char* path;
                 if(command[0] == '/'){
                     path = &command[0];
-                    printf("%s\n", currentpath);
                 }
                 else{
-                     if(compare("./", command)){
-                        name = &command[2];
-                    }
-                    else{
-                        name = &command[0];
-                    }
+                    name = &command[0];
                     path = malloc(sizeof(currentpath) + strlen(name) + 1);
                     strcpy(path, currentpath);
                     strcat(path, "/");
