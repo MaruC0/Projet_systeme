@@ -2,10 +2,15 @@
 
 ## TO DO LIST :
 
-__Commande "cd":__
+**Etape 3**
 
-- Le nombre d'espaces entre les éléments de la commande n'ont pas d'importance. De plus, si plusieurs paramètres sont passés à la commande (séparé par un ou des espaces), seul le premier paramètre est pris en compte.
-- Les fichiers peuvent avoir un nom contenant le caractère '.', notamment au début. Ne pas faire de confusion avec le fichier courant.
-- Les chemins '.' et '..' peuvent être enchaînés par des '/' (par exemple "cd ../../fichier/fichier2").
-- Crée une fonction d'affichage d'erreur en cas de cd impossible ("cd: can't cd to \*path*").
+- Gestion redirection des entrées et sorties depuis un autre fichier
+- Mettre en place les pipes pour lancer deux processus depuis la même commande
 
+**Etape 4**
+
+- Gestion de la mise en foreground ou background des processus
+
+**Etape 5**
+
+- Ajouter le travail fait pendant le TP noté (la copie de fichier et de dossier)
