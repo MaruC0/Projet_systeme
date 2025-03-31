@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#incldue <errno.h>
 
 
 #define ENTRY_SIZE 500
@@ -83,7 +84,7 @@ int main(int argc, char *argv[]){
                 chdir(getenv("HOME"));
             } else {
                 if(chdir(args[1]) != 0){
-                    printf("cd: %s: No such file or directory\n", args[1]);
+                    printf("cd: %s: %s\n", args[1], strerror(errno));
                 }
             }
         } else if(compare("./", command)) {
@@ -97,7 +98,7 @@ int main(int argc, char *argv[]){
                 strcat(path, name);
                 char* argv2[] = {path, NULL}; // Tableau pour execv
                 execv(path, argv2);
-                printf("%s: Nom de l'erreur.\n",command);
+                printf("%s: %s\n",command, strerror(errno);
                 exit(127); /* only if execv fails */
             } else { /* pid!=0; parent process */
                 waitpid(pid, 0, 0); /* wait for child to exit */
@@ -108,7 +109,7 @@ int main(int argc, char *argv[]){
                 char* path = &command[1];
                 char *argv2[] = {path, NULL};
                 execv(path, argv2);
-                printf("%s: Nom de l'erreur.\n", command);
+                printf("%s: %s\n",command, strerror(errno);
                 exit(127); /* only if execv fails */
             }
             else{
