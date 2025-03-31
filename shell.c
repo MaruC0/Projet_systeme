@@ -6,7 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#incldue <errno.h>
+#include <errno.h>
 
 
 #define ENTRY_SIZE 500
@@ -87,33 +87,34 @@ int main(int argc, char *argv[]){
                     printf("cd: %s: %s\n", args[1], strerror(errno));
                 }
             }
-        } else if(compare("./", command)) {
+        } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
             /*Spawn a child to run the program.*/
             pid_t pid = fork();
             if (pid == 0) { /* child process */
-                char* name = &command[2];
-                char* path = malloc(sizeof(currentpath) + strlen(name) + 1);
-                strcpy(path, currentpath);
-                strcat(path, "/");
-                strcat(path, name);
+                char* name;
+                char* path;
+                if(command[0] == '/'){
+                    path = &command[0];
+                    printf("%s\n", currentpath);
+                }
+                else{
+                     if(compare("./", command)){
+                        name = &command[2];
+                    }
+                    else{
+                        name = &command[0];
+                    }
+                    path = malloc(sizeof(currentpath) + strlen(name) + 1);
+                    strcpy(path, currentpath);
+                    strcat(path, "/");
+                    strcat(path, name);
+                }
                 char* argv2[] = {path, NULL}; // Tableau pour execv
                 execv(path, argv2);
-                printf("%s: %s\n",command, strerror(errno);
+                printf("%s: %s\n", command, strerror(errno));
                 exit(127); /* only if execv fails */
             } else { /* pid!=0; parent process */
                 waitpid(pid, 0, 0); /* wait for child to exit */
-            }
-        } else if(command[0] == '/'){
-            pid_t pid = fork();
-            if (pid == 0) {
-                char* path = &command[1];
-                char *argv2[] = {path, NULL};
-                execv(path, argv2);
-                printf("%s: %s\n",command, strerror(errno);
-                exit(127); /* only if execv fails */
-            }
-            else{
-                waitpid(pid, 0, 0);
             }
         } else {
             printf("%s : command not found\n", entry);
