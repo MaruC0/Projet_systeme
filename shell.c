@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,11 +43,15 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-void askInput(char* entry){
+void askInput(char** entry){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
-    fgets(entry, PATH_SIZE, stdin);
+    size_t taille = sizeof(entry);
+    if(getline(entry, &taille, stdin) < 0){
+        perror("askInput");
+        exit(EXIT_FAILURE);
+    }
 }
 
 int getArgs(char* entry, char* tab[]){
@@ -64,13 +69,13 @@ int getArgs(char* entry, char* tab[]){
 
 int main(int argc, char *argv[]){
 
-    char entry[ENTRY_SIZE];
+    char* entry = malloc(sizeof(char) * ENTRY_SIZE);
     char* args[ENTRY_SIZE / 2]; // Tableau d'arguments en entrée
     int nbargs = 0;
 
     while(true) {
         getcwd(currentpath, PATH_SIZE);
-        askInput(entry);
+        askInput(&entry);
         nbargs = getArgs(entry, args);
 
         char* command = args[0];
