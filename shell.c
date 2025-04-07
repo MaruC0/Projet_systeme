@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <errno.h>
-
+#include <fcntl.h>
 
 #define ENTRY_SIZE 500
 #define PATH_SIZE 500
@@ -96,6 +96,19 @@ int main(int argc, char *argv[]){
             /*Spawn a child to run the program.*/
             pid_t pid = fork();
             if (pid == 0) { /* child process */
+                if (args[1][0] == '<' || args[1][0] == '>'){
+                    int fd = open(args[2],O_RDWR);
+                    if (fd < 0){
+                        perror("Fichier n'existe pas");
+                    }
+                    if (args[1][0] == '<'){
+                        dup2(fd, STDIN_FILENO);
+                        close(fd);
+                    } else {
+                        dup2(fd, STDOUT_FILENO);
+                        close(fd);
+                    }
+                }
                 char* name;
                 char* path;
                 if(command[0] == '/'){
