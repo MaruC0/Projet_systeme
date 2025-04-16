@@ -43,6 +43,41 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
+void setIO(char *args[],int nbargs){
+    int lastI = -1;
+    int lastO = -1;
+    int fdi = -1;
+    int fdo = -1;
+    printf("%d", nbargs);
+    for (int i=1;i<nbargs;i++){
+        printf("HELLO");
+        if(args[i] == "<"){
+            lastI = i;
+        } else if(args[i] == ">"){
+            lastO = i;
+        }
+    }
+    if (nbargs>lastI+1){
+        printf("HELLO");
+        fdi = open(args[lastI+1],O_RDWR | O_CREAT);
+    }
+    if (nbargs>lastO+1){
+        fdo = open(args[lastO+1],O_RDWR | O_CREAT);
+    }
+    if (fdi>=0){
+        dup2(fdi, STDIN_FILENO);
+        close(fdi);
+    } else {
+        perror(args[lastI]);
+    }
+    if (fdo>=0){
+        dup2(fdo, STDOUT_FILENO);
+        close(fdo);
+    } else {
+        perror(args[lastO]);
+    }
+}
+
 void askInput(char** entry){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
@@ -96,19 +131,7 @@ int main(int argc, char *argv[]){
             /*Spawn a child to run the program.*/
             pid_t pid = fork();
             if (pid == 0) { /* child process */
-                if (args[1][0] == '<' || args[1][0] == '>'){
-                    int fd = open(args[2],O_RDWR);
-                    if (fd < 0){
-                        perror("Fichier n'existe pas");
-                    }
-                    if (args[1][0] == '<'){
-                        dup2(fd, STDIN_FILENO);
-                        close(fd);
-                    } else {
-                        dup2(fd, STDOUT_FILENO);
-                        close(fd);
-                    }
-                }
+                setIO(args, nbargs);
                 char* name;
                 char* path;
                 if(command[0] == '/'){
@@ -133,6 +156,5 @@ int main(int argc, char *argv[]){
         }
 
     }
-
     return 0;
 }
