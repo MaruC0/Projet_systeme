@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#include <errno.h>
 #include <fcntl.h>
 
 #define ENTRY_SIZE 500
@@ -46,35 +45,32 @@ bool compare(char* str1, char* str2){
 void setIO(char *args[],int nbargs){
     int lastI = -1;
     int lastO = -1;
-    int fdi = -1;
-    int fdo = -1;
-    printf("%d", nbargs);
+    int fdi = -2;
+    int fdo = -2;
     for (int i=1;i<nbargs;i++){
-        printf("HELLO");
-        if(args[i] == "<"){
+        if(compare(args[i], "<")){
             lastI = i;
-        } else if(args[i] == ">"){
+        } else if(compare(args[i], ">")){
             lastO = i;
         }
     }
-    if (nbargs>lastI+1){
-        printf("HELLO");
-        fdi = open(args[lastI+1],O_RDWR | O_CREAT);
+    if (nbargs>lastI+1 && lastI>-1){
+        fdi = open(args[lastI+1],O_RDWR | O_CREAT, 00777);
     }
-    if (nbargs>lastO+1){
-        fdo = open(args[lastO+1],O_RDWR | O_CREAT);
+    if (nbargs>lastO+1 && lastO>-1){
+        fdo = open(args[lastO+1],O_RDWR | O_CREAT, 00777);
     }
     if (fdi>=0){
         dup2(fdi, STDIN_FILENO);
         close(fdi);
-    } else {
-        perror(args[lastI]);
+    } else if (fdi == -1){
+        printf("erreur fdi: %s\n", strerror(errno));
     }
     if (fdo>=0){
         dup2(fdo, STDOUT_FILENO);
         close(fdo);
-    } else {
-        perror(args[lastO]);
+    } else if (fdo == -1){
+        printf("erreur fdo: %s\n", strerror(errno));
     }
 }
 
@@ -131,6 +127,7 @@ int main(int argc, char *argv[]){
             /*Spawn a child to run the program.*/
             pid_t pid = fork();
             if (pid == 0) { /* child process */
+                printf("Dans le bon if\n");
                 setIO(args, nbargs);
                 char* name;
                 char* path;
