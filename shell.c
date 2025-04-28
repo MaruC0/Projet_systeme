@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +11,6 @@
 #include <fcntl.h>
 
 #define ENTRY_SIZE 500
-#define PATH_SIZE 500
 
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
@@ -21,7 +21,7 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
-char currentpath[PATH_SIZE];
+char* currentpath;
 
 bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
@@ -74,19 +74,23 @@ void setIO(char *args[],int nbargs){
     }
 }
 
-void askInput(char** entry){
+size_t askInput(char** entry){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
     size_t taille = sizeof(entry);
-    if(getline(entry, &taille, stdin) < 0){
+    taille = getline(entry, &taille, stdin);
+    if(taille < 0){
         perror("askInput");
         exit(EXIT_FAILURE);
     }
+    return taille;
 }
 
-int getArgs(char* entry, char* tab[]){
-    const char* separators = " \n";
+int getArgs(char* tab[], char* entry, const char* separators){
+    if(!separators){
+        separators = " \n";
+    }
     int i = 0;
     char* strToken = strtok(entry, separators);
     while (strToken != NULL) {
@@ -101,13 +105,15 @@ int getArgs(char* entry, char* tab[]){
 int main(int argc, char *argv[]){
 
     char* entry = malloc(sizeof(char) * ENTRY_SIZE);
-    char* args[ENTRY_SIZE / 2]; // Tableau d'arguments en entrée
     int nbargs = 0;
 
     while(true) {
-        getcwd(currentpath, PATH_SIZE);
-        askInput(&entry);
-        nbargs = getArgs(entry, args);
+
+        currentpath = getcwd(NULL, 0);
+        size_t entry_size = askInput(&entry);
+
+        char** args = malloc(entry_size/2);
+        nbargs = getArgs(args, entry, " \n");
 
         char* command = args[0];
 
@@ -127,20 +133,8 @@ int main(int argc, char *argv[]){
             /*Spawn a child to run the program.*/
             pid_t pid = fork();
             if (pid == 0) { /* child process */
-                printf("Dans le bon if\n");
                 setIO(args, nbargs);
-                char* name;
-                char* path;
-                if(command[0] == '/'){
-                    path = &command[0];
-                }
-                else{
-                    name = &command[0];
-                    path = malloc(sizeof(currentpath) + strlen(name) + 1);
-                    strcpy(path, currentpath);
-                    strcat(path, "/");
-                    strcat(path, name);
-                }
+                char* path = &command[0];
                 char* argv2[] = {path, NULL}; // Tableau pour execv
                 execv(path, argv2);
                 printf("%s: %s\n", command, strerror(errno));
