@@ -123,37 +123,93 @@ void exec_command(char* line){
             }
         }
     } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
-        /*Spawn a child to run the program.*/
-        pid_t pid = fork();
-        if (pid == 0) { /* child process */
-            setIO(args, nbargs);
-            char* path = &command[0];
-            char* argv2[] = {path, NULL}; // Tableau pour execv
-            execv(path, argv2);
-            printf("%s: %s\n", command, strerror(errno));
-            exit(127); /* only if execv fails */
-        } else { /* pid!=0; parent process */
-            waitpid(pid, 0, 0); /* wait for child to exit */
-        }
+        setIO(args, nbargs);
+        char* path = &command[0];
+        char* argv2[] = {path, NULL}; // Tableau pour execv
+        execv(path, argv2);
+        perror("ERREUR");
+        //printf("%s: %s\n", command, strerror(errno));
+        exit(127); /* only if execv fails */
     } else {
         printf("%s : command not found\n", line);
     }
-    free(currentpath);
     free(args);
+}
+
+int spawn_proc (int in, int out, char **pipes) {
+    pid_t pid;
+
+    if ((pid = fork()) == 0){
+        if (in != 0){
+            dup2(in, STDIN_FILENO);
+            close(in);
+        }
+
+        if (out != 1){
+            dup2(out, STDOUT_FILENO);
+            close(out);
+        }
+
+        exec_command(pipes[0]);
+    } else {
+        waitpid(pid, 0, 0);
+    }
+    return pid;
 }
 
 
 int main(int argc, char *argv[]){
 
     char* entry = malloc(sizeof(char) * ENTRY_SIZE);
-    int nbargs = 0;
-
+    char** pipes = malloc(strlen(entry)/2);
+    int saved_in = dup(STDIN_FILENO);
+    
     while(true) {
+        int i=0;
+        pid_t pid;
+        int in, fd[2];
+        printf("debut boucle\n");
         currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
+        printf("entree %d", (int)entry_size);
+        uint nbcmd = getArgs(pipes,entry,"|");
+        printf("nbcmd %d", nbcmd);
+        in = 0;
 
-        exec_command(entry);
+        if (nbcmd > 1){
+            /* The first process should get its input from the original file descriptor 0.  */
+
+            /* Note the loop bound, we spawn here all, but the last stage of the pipeline.  */
+            for (i = 0; i < nbcmd-1; ++i){
+                pipe(fd);
+
+                spawn_proc (in, fd[1], &pipes[i]);
+
+                close(fd[1]);
+
+                in = fd[0];
+             }
+
+            /* Last stage of the pipeline - set stdin be the read end of the previous pipe
+            and output to the original file descriptor 1. */  
+            if (in != 0){
+                dup2(in, 0);
+            }
+        }
+
+        printf("fin boucle\n");
+        pid = fork();
+        if (pid == 0){ 
+            exec_command(pipes[nbcmd-1]);
+        } else {
+            waitpid(pid, 0, 0);
+        }
+        //close(in);
+        dup2(saved_in,STDIN_FILENO);
+        close(fd[0]);
+        close(fd[1]);
     }
     free(entry);
+    free(currentpath);
     return 0;
 }
