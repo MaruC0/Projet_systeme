@@ -102,6 +102,47 @@ int getArgs(char* tab[], char* entry, const char* separators){
     return i;
 }
 
+void exec_command(char* line){
+    // Execute une ligne de commande simple
+
+    char** args = malloc(strlen(line)/2);
+    uint nbargs = getArgs(args, line, " \n");
+
+    char* command = args[0];
+
+    if(strcmp(command, "exit") == 0) {
+        exit(0);
+    } else if(strcmp("cd", command) == 0) {
+        if(nbargs > 2){
+            printf("cd: too many arguments\n");
+        } else if(nbargs == 1){
+            chdir(getenv("HOME"));
+        } else {
+            if(chdir(args[1]) != 0){
+                printf("cd: %s: %s\n", args[1], strerror(errno));
+            }
+        }
+    } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
+        /*Spawn a child to run the program.*/
+        pid_t pid = fork();
+        if (pid == 0) { /* child process */
+            setIO(args, nbargs);
+            char* path = &command[0];
+            char* argv2[] = {path, NULL}; // Tableau pour execv
+            execv(path, argv2);
+            printf("%s: %s\n", command, strerror(errno));
+            exit(127); /* only if execv fails */
+        } else { /* pid!=0; parent process */
+            waitpid(pid, 0, 0); /* wait for child to exit */
+        }
+    } else {
+        printf("%s : command not found\n", line);
+    }
+    free(currentpath);
+    free(args);
+}
+
+
 int main(int argc, char *argv[]){
 
     char* entry = malloc(sizeof(char) * ENTRY_SIZE);
@@ -112,40 +153,8 @@ int main(int argc, char *argv[]){
         currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
 
-        char** args = malloc(entry_size/2);
-        nbargs = getArgs(args, entry, " \n");
-
-        char* command = args[0];
-
-        if(strcmp(command, "exit") == 0) {
-                break;
-        } else if(strcmp("cd", command) == 0) {
-            if(nbargs > 2){
-                printf("cd: too many arguments\n");
-            } else if(nbargs == 1){
-                chdir(getenv("HOME"));
-            } else {
-                if(chdir(args[1]) != 0){
-                    printf("cd: %s: %s\n", args[1], strerror(errno));
-                }
-            }
-        } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
-            /*Spawn a child to run the program.*/
-            pid_t pid = fork();
-            if (pid == 0) { /* child process */
-                setIO(args, nbargs);
-                char* path = &command[0];
-                char* argv2[] = {path, NULL}; // Tableau pour execv
-                execv(path, argv2);
-                printf("%s: %s\n", command, strerror(errno));
-                exit(127); /* only if execv fails */
-            } else { /* pid!=0; parent process */
-                waitpid(pid, 0, 0); /* wait for child to exit */
-            }
-        } else {
-            printf("%s : command not found\n", entry);
-        }
-
+        exec_command(entry);
     }
+    free(entry);
     return 0;
 }
