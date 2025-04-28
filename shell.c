@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
+#include <errno.h>
 #include <fcntl.h>
 
 #define ENTRY_SIZE 500
@@ -149,7 +149,6 @@ int main(int argc, char *argv[]){
     int nbargs = 0;
 
     while(true) {
-
         currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
 
