@@ -42,31 +42,31 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-void setIO(char *args[],int nbargs){
+void setIO(char *args[], int nbargs){
     int lastI = -1;
     int lastO = -1;
     int fdi = -2;
     int fdo = -2;
-    for (int i=1;i<nbargs;i++){
+    for (int i=1; i<nbargs; i++){
         if(compare(args[i], "<")){
             lastI = i;
         } else if(compare(args[i], ">")){
             lastO = i;
         }
     }
-    if (nbargs>lastI+1 && lastI>-1){
-        fdi = open(args[lastI+1],O_RDWR | O_CREAT, 00777);
+    if (nbargs > lastI+1 && lastI > -1){
+        fdi = open(args[lastI+1], O_RDWR | O_CREAT, 00777);
     }
-    if (nbargs>lastO+1 && lastO>-1){
-        fdo = open(args[lastO+1],O_RDWR | O_CREAT, 00777);
+    if (nbargs > lastO+1 && lastO > -1){
+        fdo = open(args[lastO+1], O_RDWR | O_CREAT, 00777);
     }
-    if (fdi>=0){
+    if (fdi >= 0){
         dup2(fdi, STDIN_FILENO);
         close(fdi);
     } else if (fdi == -1){
         printf("erreur fdi: %s\n", strerror(errno));
     }
-    if (fdo>=0){
+    if (fdo >= 0){
         dup2(fdo, STDOUT_FILENO);
         close(fdo);
     } else if (fdo == -1){
@@ -102,11 +102,8 @@ int getArgs(char* tab[], char* entry, const char* separators){
     return i;
 }
 
-void exec_command(char* line){
+void exec_command(char** args, uint nbargs){
     // Execute une ligne de commande simple
-
-    char** args = malloc(strlen(line)/2);
-    uint nbargs = getArgs(args, line, " \n");
 
     char* command = args[0];
 
@@ -122,22 +119,28 @@ void exec_command(char* line){
                 printf("cd: %s: %s\n", args[1], strerror(errno));
             }
         }
-    } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
+    // Retirer ça pour permettre d'utiliser ls par ex
+   } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
         setIO(args, nbargs);
         char* path = &command[0];
         char* argv2[] = {path, NULL}; // Tableau pour execv
         execv(path, argv2);
         perror("ERREUR");
-        //printf("%s: %s\n", command, strerror(errno));
+        printf("%s: %s\n", command, strerror(errno));
+        free(args);
         exit(127); /* only if execv fails */
     } else {
-        printf("%s : command not found\n", line);
+        printf("%s : command not found\n", command);
+        free(args);
+        exit(1);
     }
     free(args);
 }
 
-int spawn_proc (int in, int out, char **pipes) {
+int spawn_proc (int in, int out, char *pipes) {
     pid_t pid;
+    char** args = malloc(strlen(pipes)/2);
+    uint nbargs = getArgs(args, pipes, " \n");
 
     if ((pid = fork()) == 0){
         if (in != 0){
@@ -150,10 +153,12 @@ int spawn_proc (int in, int out, char **pipes) {
             close(out);
         }
 
-        exec_command(pipes[0]);
+        exec_command(args, nbargs);
+        exit(0);
     } else {
         waitpid(pid, 0, 0);
     }
+    free(args);
     return pid;
 }
 
@@ -163,17 +168,16 @@ int main(int argc, char *argv[]){
     char* entry = malloc(sizeof(char) * ENTRY_SIZE);
     char** pipes = malloc(strlen(entry)/2);
     int saved_in = dup(STDIN_FILENO);
-    
+    int saved_out = dup(STDOUT_FILENO);
+
     while(true) {
         int i=0;
-        pid_t pid;
         int in, fd[2];
-        printf("debut boucle\n");
+
         currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
-        printf("entree %d", (int)entry_size);
-        uint nbcmd = getArgs(pipes,entry,"|");
-        printf("nbcmd %d", nbcmd);
+        uint nbcmd = getArgs(pipes, entry, "|\n");
+
         in = 0;
 
         if (nbcmd > 1){
@@ -183,31 +187,44 @@ int main(int argc, char *argv[]){
             for (i = 0; i < nbcmd-1; ++i){
                 pipe(fd);
 
-                spawn_proc (in, fd[1], &pipes[i]);
+                spawn_proc(in, fd[1], pipes[i]);
 
                 close(fd[1]);
 
                 in = fd[0];
-             }
-
-            /* Last stage of the pipeline - set stdin be the read end of the previous pipe
-            and output to the original file descriptor 1. */  
-            if (in != 0){
-                dup2(in, 0);
             }
-        }
+            // Dernière commande prend sont entrée depuis le dernier pipe et affiche sur la sortie standard
+            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1]);
 
-        printf("fin boucle\n");
-        pid = fork();
-        if (pid == 0){ 
-            exec_command(pipes[nbcmd-1]);
+            close(fd[0]);
+            close(fd[1]);
+
+            if (in != 0){
+                dup2(0, in);
+            }
+
         } else {
-            waitpid(pid, 0, 0);
+            char** args = malloc(strlen(pipes[0])/2);
+            uint nbargs = getArgs(args, pipes[0], " \n");
+            char* command = args[0];
+
+            if(strcmp(command, "exit") == 0) {
+                exit(0);
+            } else if(strcmp("cd", command) == 0) {
+                if(nbargs > 2){
+                    printf("cd: too many arguments\n");
+                } else if(nbargs == 1){
+                    chdir(getenv("HOME"));
+                } else {
+                    if(chdir(args[1]) != 0){
+                        printf("cd: %s: %s\n", args[1], strerror(errno));
+                    }
+                }
+            } else {
+                spawn_proc(STDIN_FILENO, STDOUT_FILENO, pipes[0]);
+            }
+            free(args);
         }
-        //close(in);
-        dup2(saved_in,STDIN_FILENO);
-        close(fd[0]);
-        close(fd[1]);
     }
     free(entry);
     free(currentpath);
