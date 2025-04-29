@@ -10,8 +10,6 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#define ENTRY_SIZE 500
-
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
 #define KGRN  "\x1B[32m"
@@ -78,8 +76,10 @@ size_t askInput(char** entry){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
-    size_t taille = sizeof(entry);
-    taille = getline(entry, &taille, stdin);
+    free(*entry);
+    *entry = NULL;
+    size_t taille = 0;
+    getline(entry, &taille, stdin);
     if(taille < 0){
         perror("askInput");
         exit(EXIT_FAILURE);
@@ -111,33 +111,34 @@ void exec_command(char** args, uint nbargs){
         exit(0);
     } else if(strcmp("cd", command) == 0) {
         if(nbargs > 2){
-            printf("cd: too many arguments\n");
+            fprintf(stderr, "cd: too many arguments\n");
         } else if(nbargs == 1){
             chdir(getenv("HOME"));
         } else {
             if(chdir(args[1]) != 0){
-                printf("cd: %s: %s\n", args[1], strerror(errno));
+                fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
             }
         }
     // Retirer ça pour permettre d'utiliser ls par ex
-   } else if(compare("./", command) || compare("../", command) || command[0] == '/'){
+   } else {
         setIO(args, nbargs);
         char* path = &command[0];
         char* argv2[] = {path, NULL}; // Tableau pour execv
         execv(path, argv2);
-        perror("ERREUR");
-        printf("%s: %s\n", command, strerror(errno));
+
+        if(compare("./", command) || compare("../", command) || command[0] == '/'){
+            // Ici, l'erreur devrait être 'no such file or directory'
+            fprintf(stderr, "%s: %s\n", command, strerror(errno));
+        } else {
+            fprintf(stderr, "%s: command not found\n", command);
+        }
         free(args);
         exit(127); /* only if execv fails */
-    } else {
-        printf("%s : command not found\n", command);
-        free(args);
-        exit(1);
     }
     free(args);
 }
 
-int spawn_proc (int in, int out, char *pipes) {
+int spawn_proc (int in, int out, char* pipes) {
     pid_t pid;
     char** args = malloc(strlen(pipes)/2);
     uint nbargs = getArgs(args, pipes, " \n");
@@ -165,17 +166,14 @@ int spawn_proc (int in, int out, char *pipes) {
 
 int main(int argc, char *argv[]){
 
-    char* entry = malloc(sizeof(char) * ENTRY_SIZE);
-    char** pipes = malloc(strlen(entry)/2);
-    int saved_in = dup(STDIN_FILENO);
-    int saved_out = dup(STDOUT_FILENO);
+    char* entry = NULL;
+    int in, fd[2];
 
     while(true) {
-        int i=0;
-        int in, fd[2];
 
         currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
+        char** pipes = malloc(entry_size/2);
         uint nbcmd = getArgs(pipes, entry, "|\n");
 
         in = 0;
@@ -184,7 +182,7 @@ int main(int argc, char *argv[]){
             /* The first process should get its input from the original file descriptor 0.  */
 
             /* Note the loop bound, we spawn here all, but the last stage of the pipeline.  */
-            for (i = 0; i < nbcmd-1; ++i){
+            for (int i = 0; i < nbcmd-1; ++i){
                 pipe(fd);
 
                 spawn_proc(in, fd[1], pipes[i]);
@@ -212,12 +210,12 @@ int main(int argc, char *argv[]){
                 exit(0);
             } else if(strcmp("cd", command) == 0) {
                 if(nbargs > 2){
-                    printf("cd: too many arguments\n");
+                    fprintf(stderr, "cd: too many arguments\n");
                 } else if(nbargs == 1){
                     chdir(getenv("HOME"));
                 } else {
                     if(chdir(args[1]) != 0){
-                        printf("cd: %s: %s\n", args[1], strerror(errno));
+                        fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
                     }
                 }
             } else {
