@@ -145,7 +145,7 @@ void exec_command(char** args, uint nbargs){
 
 }
 
-int spawn_proc (int in, int out, char* pipes) {
+int spawn_proc (int in, int out, char* pipes, bool background) {
 
     char** args = malloc(strlen(pipes) * sizeof(char*));
     uint nbargs = getArgs(args, pipes, " \n");
@@ -165,7 +165,9 @@ int spawn_proc (int in, int out, char* pipes) {
         exec_command(args, nbargs);
         exit(0);
     } else {
-        waitpid(pid, 0, 0);
+        if(!background){
+            waitpid(pid, 0, 0);
+        }
     }
 
     free(args);
@@ -183,6 +185,7 @@ int main(int argc, char *argv[]){
         size_t entry_size = askInput(&entry);
         char** pipes = malloc(entry_size * sizeof(char*));
         uint nbcmd = getArgs(pipes, entry, "|\n");
+        bool background = false;
 
         // Gestion entrée vide
         if(!nbcmd){
@@ -192,20 +195,27 @@ int main(int argc, char *argv[]){
         in = 0;
 
         if (nbcmd > 1){
+            if (pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] == '&' ){
+                pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] = '\0';
+                background = true;
+            } else if (pipes[nbcmd-1][0] == '&'){
+                nbcmd = nbcmd - 1;
+                background = true;
+            }
             /* The first process should get its input from the original file descriptor 0.  */
 
             /* Note the loop bound, we spawn here all, but the last stage of the pipeline.  */
             for (int i = 0; i < nbcmd-1; ++i){
                 pipe(fd);
 
-                spawn_proc(in, fd[1], pipes[i]);
+                spawn_proc(in, fd[1], pipes[i], background);
 
                 close(fd[1]);
 
                 in = fd[0];
             }
             // Dernière commande prend sont entrée depuis le dernier pipe et affiche sur la sortie standard
-            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1]);
+            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1], background);
 
             close(fd[0]);
             close(fd[1]);
