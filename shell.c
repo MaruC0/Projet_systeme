@@ -46,9 +46,9 @@ void setIO(char *args[], int nbargs){
     int fdi = -2;
     int fdo = -2;
     for (int i=1; i<nbargs; i++){
-        if(compare(args[i], "<")){
+        if(args[i][0] == '<'){
             lastI = i;
-        } else if(compare(args[i], ">")){
+        } else if(args[i][0] == '>'){
             lastO = i;
         }
     }
@@ -138,11 +138,19 @@ void exec_command(char** args, uint nbargs){
     free(args);
 }
 
-int spawn_proc (int in, int out, char* pipes) {
+int spawn_proc (int in, int out, char* pipes, char** args, int nbargs) {
     pid_t pid;
-    char** args = malloc(strlen(pipes)/2);
-    uint nbargs = getArgs(args, pipes, " \n");
-
+    char** current_args;
+    uint current_nbargs;
+    // Selon le cas où l'on vient d'un pipe ou d'une commande seul pour ne pas refaire le getArgs
+    if(pipes){
+        current_args = malloc(strlen(pipes) * sizeof(char*));
+        current_nbargs = getArgs(current_args, pipes, " \n");
+    }
+    else{
+        current_args = args;
+        current_nbargs = nbargs;
+    }
     if ((pid = fork()) == 0){
         if (in != 0){
             dup2(in, STDIN_FILENO);
@@ -154,12 +162,14 @@ int spawn_proc (int in, int out, char* pipes) {
             close(out);
         }
 
-        exec_command(args, nbargs);
+        exec_command(current_args, current_nbargs);
         exit(0);
     } else {
         waitpid(pid, 0, 0);
     }
-    free(args);
+    if(pipes){
+        free(current_args);
+    }
     return pid;
 }
 
@@ -173,7 +183,7 @@ int main(int argc, char *argv[]){
 
         currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
-        char** pipes = malloc(entry_size/2);
+        char** pipes = malloc(entry_size * sizeof(char*));
         uint nbcmd = getArgs(pipes, entry, "|\n");
 
         in = 0;
@@ -185,14 +195,14 @@ int main(int argc, char *argv[]){
             for (int i = 0; i < nbcmd-1; ++i){
                 pipe(fd);
 
-                spawn_proc(in, fd[1], pipes[i]);
+                spawn_proc(in, fd[1], pipes[i], NULL, -1);
 
                 close(fd[1]);
 
                 in = fd[0];
             }
             // Dernière commande prend sont entrée depuis le dernier pipe et affiche sur la sortie standard
-            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1]);
+            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1], NULL, -1);
 
             close(fd[0]);
             close(fd[1]);
@@ -202,7 +212,7 @@ int main(int argc, char *argv[]){
             }
 
         } else {
-            char** args = malloc(strlen(pipes[0])/2);
+            char** args = malloc(strlen(pipes[0]) * sizeof(char*));
             uint nbargs = getArgs(args, pipes[0], " \n");
             char* command = args[0];
 
@@ -219,12 +229,13 @@ int main(int argc, char *argv[]){
                     }
                 }
             } else {
-                spawn_proc(STDIN_FILENO, STDOUT_FILENO, pipes[0]);
+                spawn_proc(STDIN_FILENO, STDOUT_FILENO, NULL, args, nbargs);
             }
             free(args);
         }
+        free(pipes);
+        free(currentpath);
     }
     free(entry);
-    free(currentpath);
     return 0;
 }
