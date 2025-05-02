@@ -19,8 +19,6 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
-char* currentpath;
-
 bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
     int i=0;
@@ -75,9 +73,8 @@ void setIO(char *args[], int nbargs){
 size_t askInput(char** entry){
     /* Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
+    char* currentpath = getcwd(NULL, 0);
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
-    free(*entry);
-    *entry = NULL;
     size_t taille = 0;
     getline(entry, &taille, stdin);
     if(taille < 0){
@@ -99,11 +96,17 @@ int getArgs(char* tab[], char* entry, const char* separators){
         strToken = strtok(NULL, separators);
         i++;
     }
+    tab[i] = NULL; // Tableau finis par NULL pour execvp
     return i;
 }
 
 void exec_command(char** args, uint nbargs){
     // Execute une ligne de commande simple
+
+    // Gestion de l'entrée vide ou avec uniquement des espaces
+    if(!nbargs){
+        return;
+    }
 
     char* command = args[0];
 
@@ -119,38 +122,35 @@ void exec_command(char** args, uint nbargs){
                 fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
             }
         }
-    // Retirer ça pour permettre d'utiliser ls par ex
-   } else {
+    } else {
         setIO(args, nbargs);
-        char* path = &command[0];
-        char* argv2[] = {path, NULL}; // Tableau pour execv
-        execv(path, argv2);
 
-        if(compare("./", command) || compare("../", command) || command[0] == '/'){
-            // Ici, l'erreur devrait être 'no such file or directory'
-            fprintf(stderr, "%s: %s\n", command, strerror(errno));
-        } else {
-            fprintf(stderr, "%s: command not found\n", command);
+        pid_t pid = fork();
+        if(pid == 0){
+            execvp(args[0], args);
+
+            // Seulement si le exec ne passe pas, éxecute la suite
+            if(compare("./", command) || compare("../", command) || command[0] == '/'){
+                // Ici, l'erreur devrait être 'no such file or directory'
+                fprintf(stderr, "%s: %s\n", command, strerror(errno));
+            } else {
+                fprintf(stderr, "%s: command not found\n", command);
+            }
+            free(args);
+            exit(127);
+        } else{
+            waitpid(pid, 0, 0);
         }
-        free(args);
-        exit(127); /* only if execv fails */
     }
-    free(args);
+
 }
 
-int spawn_proc (int in, int out, char* pipes, char** args, int nbargs) {
+int spawn_proc (int in, int out, char* pipes) {
+
+    char** args = malloc(strlen(pipes) * sizeof(char*));
+    uint nbargs = getArgs(args, pipes, " \n");
+
     pid_t pid;
-    char** current_args;
-    uint current_nbargs;
-    // Selon le cas où l'on vient d'un pipe ou d'une commande seul pour ne pas refaire le getArgs
-    if(pipes){
-        current_args = malloc(strlen(pipes) * sizeof(char*));
-        current_nbargs = getArgs(current_args, pipes, " \n");
-    }
-    else{
-        current_args = args;
-        current_nbargs = nbargs;
-    }
     if ((pid = fork()) == 0){
         if (in != 0){
             dup2(in, STDIN_FILENO);
@@ -162,14 +162,13 @@ int spawn_proc (int in, int out, char* pipes, char** args, int nbargs) {
             close(out);
         }
 
-        exec_command(current_args, current_nbargs);
+        exec_command(args, nbargs);
         exit(0);
     } else {
         waitpid(pid, 0, 0);
     }
-    if(pipes){
-        free(current_args);
-    }
+
+    free(args);
     return pid;
 }
 
@@ -181,10 +180,14 @@ int main(int argc, char *argv[]){
 
     while(true) {
 
-        currentpath = getcwd(NULL, 0);
         size_t entry_size = askInput(&entry);
         char** pipes = malloc(entry_size * sizeof(char*));
         uint nbcmd = getArgs(pipes, entry, "|\n");
+
+        // Gestion entrée vide
+        if(!nbcmd){
+            continue;
+        }
 
         in = 0;
 
@@ -195,18 +198,19 @@ int main(int argc, char *argv[]){
             for (int i = 0; i < nbcmd-1; ++i){
                 pipe(fd);
 
-                spawn_proc(in, fd[1], pipes[i], NULL, -1);
+                spawn_proc(in, fd[1], pipes[i]);
 
                 close(fd[1]);
 
                 in = fd[0];
             }
             // Dernière commande prend sont entrée depuis le dernier pipe et affiche sur la sortie standard
-            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1], NULL, -1);
+            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1]);
 
             close(fd[0]);
             close(fd[1]);
 
+            // Remet la lecture du shell à l'entrée standard
             if (in != 0){
                 dup2(0, in);
             }
@@ -214,27 +218,12 @@ int main(int argc, char *argv[]){
         } else {
             char** args = malloc(strlen(pipes[0]) * sizeof(char*));
             uint nbargs = getArgs(args, pipes[0], " \n");
-            char* command = args[0];
 
-            if(strcmp(command, "exit") == 0) {
-                exit(0);
-            } else if(strcmp("cd", command) == 0) {
-                if(nbargs > 2){
-                    fprintf(stderr, "cd: too many arguments\n");
-                } else if(nbargs == 1){
-                    chdir(getenv("HOME"));
-                } else {
-                    if(chdir(args[1]) != 0){
-                        fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
-                    }
-                }
-            } else {
-                spawn_proc(STDIN_FILENO, STDOUT_FILENO, NULL, args, nbargs);
-            }
+            exec_command(args, nbargs);
+
             free(args);
         }
         free(pipes);
-        free(currentpath);
     }
     free(entry);
     return 0;
