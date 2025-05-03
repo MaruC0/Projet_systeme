@@ -9,6 +9,8 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <termios.h>
+#include <signal.h>
 
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
@@ -18,6 +20,9 @@
 #define KMAG  "\x1B[35m"
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
+
+// Variable globale qui garde en mémoire le pid de notre shell
+pid_t shell_pid;
 
 bool compare(char* str1, char* str2){
     // Compare la chaîne str1 au début de la chaîne str2.
@@ -100,7 +105,40 @@ int getArgs(char* tab[], char* entry, const char* separators){
     return i;
 }
 
-void exec_command(char** args, uint nbargs){
+void put_job_in_foreground (pid_t pgid, int cont){
+    // Donne le terminal au job (groupe de processus qui ne contient techniquement qu'un seul processus et ses enfants dans notre cas)
+    tcsetpgrp(STDIN_FILENO, pgid);
+    
+    if(cont) {
+        // On lui dit de continuer si il est interrompu j'ai mis ça sur 1 par défaut car on le stoppe jamais donc au cas ou voilà
+        kill(-pgid, SIGCONT);
+    }
+    
+    waitpid(-pgid, 0, WUNTRACED);
+    
+    // Redonne contrôle au shell
+    tcsetpgrp(STDIN_FILENO, shell_pid);
+}
+
+void put_job_in_background (pid_t pgid){
+    // On ne lui donne pas le terminal, et on le continue si jamais il était interrompu
+    kill(-pgid, SIGCONT);
+}
+
+pid_t str_to_pid(const char* input){
+    // Transforme l'input qui est un char* en pid_t, avec gestion d'erreur si l'entrée est pas un nombre.
+    errno = 0;
+    char* endptr;
+    long val = strtol(input, &endptr, 10);
+    
+    if (errno != 0 || *endptr != '\0' || val < 1){
+        return -1;
+    }
+    
+    return (pid_t)val;
+}
+
+void exec_command(char** args, uint nbargs, bool background){
     // Execute une ligne de commande simple
 
     // Gestion de l'entrée vide ou avec uniquement des espaces
@@ -122,13 +160,46 @@ void exec_command(char** args, uint nbargs){
                 fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
             }
         }
+    } else if(strcmp("fg", command) == 0) {
+        // Si je fais fg, je mets en foreground le processus passé en paramètre.
+        if (nbargs > 1){
+            pid_t newpid = str_to_pid(args[1]);
+            if (newpid != -1){
+                put_job_in_foreground(newpid, 1);
+            } else {
+                fprintf(stderr, "%s: invalid pid\n", command);
+            }
+        } else {
+            fprintf(stderr, "%s: missing arguments\n", command);
+        }
+    } else if(strcmp("bg", command) == 1) {
+        // Si je fais bg, je mets en background le processus passé en paramètre.
+        if (nbargs > 1){
+            pid_t newpid = str_to_pid(args[1]);
+            if (newpid != -1){
+                put_job_in_background(newpid);
+            } else {
+                fprintf(stderr, "%s: invalid pid\n", command);
+            }
+        } else {
+            fprintf(stderr, "%s: missing arguments\n", command);
+        }
     } else {
+        // Gère les entrées sorties si il y a des redirections
         setIO(args, nbargs);
-
+        
         pid_t pid = fork();
         if(pid == 0){
+            // On met le fils dans son propre groupe
+            setpgid(0,0);
+            // On lui donne le contrôle du terminal si il est pas lancé en background
+            if(!background){
+                tcsetpgrp(STDIN_FILENO, getpid());
+            }
+            
+            // On éxécute la fonction
             execvp(args[0], args);
-
+            
             // Seulement si le exec ne passe pas, éxecute la suite
             if(compare("./", command) || compare("../", command) || command[0] == '/'){
                 // Ici, l'erreur devrait être 'no such file or directory'
@@ -139,7 +210,18 @@ void exec_command(char** args, uint nbargs){
             free(args);
             exit(127);
         } else{
-            waitpid(pid, 0, 0);
+            setpgid(pid,pid);
+            
+            if(background){
+                // Print le pid du processus envoyé à la manière d'un shell classique
+                printf("[%d]\n",pid);
+            }
+            // Si le processus est en foreground, on lui donne le terminal, on l'attend puis il le redonne quand il a fini.
+            if(!background){
+                tcsetpgrp(STDIN_FILENO,pid);
+                waitpid(pid, 0, WUNTRACED);
+                tcsetpgrp(STDIN_FILENO,shell_pid);
+            }
         }
     }
 
@@ -162,12 +244,10 @@ int spawn_proc (int in, int out, char* pipes, bool background) {
             close(out);
         }
 
-        exec_command(args, nbargs);
+        exec_command(args, nbargs, background);
         exit(0);
     } else {
-        if(!background){
-            waitpid(pid, 0, 0);
-        }
+        waitpid(pid, 0, 0);
     }
 
     free(args);
@@ -176,12 +256,30 @@ int spawn_proc (int in, int out, char* pipes, bool background) {
 
 
 int main(int argc, char *argv[]){
+    // On ignore tous les signaux qui peuvent fermer le terminal sans le vouloir.
+    signal(SIGTTOU, SIG_IGN);  // Ignore le signal envoyé quand un processus tente de prendre contrôle du terminal
+    signal(SIGTTIN, SIG_IGN);  // Ignore tentative de lecture stdin sans contrôle
+    signal(SIGTSTP, SIG_IGN);  // Ignore Ctrl+Z dans le shell lui-même
+    
+    // On récupère le pid de notre terminal
+    shell_pid = getpid();
+       
+    // On le met dans son propre groupe
+    if (setpgid(shell_pid,shell_pid) < 0) {
+        perror("setpgid");
+        exit(1);
+    }
+    
+    // On lui donne contrôle du terminal
+    if (tcsetpgrp(STDIN_FILENO,shell_pid) < 0) {
+        perror("tcsetpgrp");
+        exit(1);
+    }
 
     char* entry = NULL;
     int in, fd[2];
 
     while(true) {
-
         size_t entry_size = askInput(&entry);
         char** pipes = malloc(entry_size * sizeof(char*));
         uint nbcmd = getArgs(pipes, entry, "|\n");
@@ -208,7 +306,7 @@ int main(int argc, char *argv[]){
             for (int i = 0; i < nbcmd-1; ++i){
                 pipe(fd);
 
-                spawn_proc(in, fd[1], pipes[i], background);
+                spawn_proc(in, fd[1], pipes[i], false); // J'ai mis ça a false, pour que seul la dernière fonction du pipe soit en background, je sais pas si c'est bien mais dans le cas contraire test1 récupérait la valeur du print du pid quand je faisait ./test2 | ./test1&.
 
                 close(fd[1]);
 
@@ -226,12 +324,37 @@ int main(int argc, char *argv[]){
             }
 
         } else {
-            char** args = malloc(strlen(pipes[0]) * sizeof(char*));
-            uint nbargs = getArgs(args, pipes[0], " \n");
+            // C'est le bordel je sais et j'en suis désolé faites attention si vous faites le ménage ça fonctionne à peine.
+            // On teste pour le background de la dernière fonction ici car getArgs détruit pipes dans l'appel suivant, je le stocke aussi dans un bool différent
+            bool lastbackground = false;
+            if (pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] == '&' ){
+                pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] = '\0';
+                lastbackground = true;
+            } else if (pipes[nbcmd-1][0] == '&'){
+                nbcmd = nbcmd - 1;
+                lastbackground = true;
+            }
+            
+            // On parse selon &
+            char** bgargs = malloc(strlen(pipes[0]) * sizeof(char*));
+            uint nb_bgargs = getArgs(bgargs, pipes[0], "&\n");
+            background = true;
+            
+            // Tous les éléments du tableau sauf le dernier sont suivis d'un & donc je les mets en background
+            for (int j=0;j<nb_bgargs-1;j++){
+                // Obligé de découper selon espace 1 par 1 et de les traiter comme des commandes solo
+                char** cmd = malloc(strlen(bgargs[j]) * sizeof(char*));
+                uint nb = getArgs(cmd, bgargs[j], " \n");
+                exec_command(cmd,nb,background);
+            }
+            
+            char** cmd = malloc(strlen(bgargs[nb_bgargs-1]) * sizeof(char*));
+            uint nb = getArgs(cmd, bgargs[nb_bgargs-1], " \n");
 
-            exec_command(args, nbargs);
+            exec_command(cmd, nb, lastbackground);
 
-            free(args);
+            free(bgargs);
+            free(cmd);
         }
         free(pipes);
     }
