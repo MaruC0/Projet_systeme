@@ -172,7 +172,7 @@ void exec_command(char** args, uint nbargs, bool background){
         } else {
             fprintf(stderr, "%s: missing arguments\n", command);
         }
-    } else if(strcmp("bg", command) == 1) {
+    } else if(strcmp("bg", command) == 0) {
         // Si je fais bg, je mets en background le processus passé en paramètre.
         if (nbargs > 1){
             pid_t newpid = str_to_pid(args[1]);
