@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // Sert pour la copie de fichier/répertoire.
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -5,12 +6,14 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <signal.h>
+#include <dirent.h>
 
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
@@ -80,6 +83,7 @@ size_t askInput(char** entry){
     et la place dans la variable passée en paramètre. */
     char* currentpath = getcwd(NULL, 0);
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
+    free(currentpath);
     size_t taille = 0;
     getline(entry, &taille, stdin);
     if(taille < 0){
@@ -138,6 +142,144 @@ pid_t str_to_pid(const char* input){
     return (pid_t)val;
 }
 
+void path_formatting(const char* e1, const char* e2, char* res){
+    int t1 = 0;
+    int t2 = 0;
+    while(e1[t1] != '\0'){
+        res[t1] = e1[t1];
+        t1 += 1;
+    }
+    if(res[t1-1] != '/'){
+        res[t1] = '/';
+        t1 += 1;
+    }
+    while(e2[t2] != '\0'){
+        res[t1+t2] = e2[t2];
+        t2 += 1;
+    }
+    res[t1+t2] = '\0';
+}
+
+void file_copy(const char* source, const char* target){
+    int file1 = open(source, O_RDONLY);
+    if(file1 == -1){
+        perror("Erreur lors de l'ouverture du fichier source: ");
+        exit(EXIT_FAILURE);
+    }
+    int file2 = open(target, O_WRONLY | O_CREAT | O_EXCL);
+    if(file2 == -1){
+        if(errno != 17){
+            perror("Erreur lors de l'ouverture du fichier cible: ");
+            close(file1);
+            exit(EXIT_FAILURE);
+        }
+        else{
+            perror("Erreur lors de l'ouverture du fichier cible: ");
+            return;
+        }
+    }
+    int taille = 200;
+    ssize_t nb_by;
+    while((nb_by = copy_file_range(file1, NULL, file2, NULL, taille, 0)) != 0){
+        if(nb_by == -1){
+            perror("Erreur lors de l'écriture dans le fichier cible: ");
+            if(remove(target) == -1){
+                perror("Erreur lors de la suppression du fichier cible: ");
+            }
+            close(file1);
+            close(file2);
+            exit(EXIT_FAILURE);
+        }
+    }
+    struct stat buffer;
+    if(stat(source, &buffer) == -1){
+        perror("Erreur lors de la récupération des permissions du fichier: ");
+        if(remove(target) == -1){
+            perror("Erreur lors de la suppression du fichier cible: ");
+        }
+        close(file1);
+        close(file2);
+        exit(EXIT_FAILURE);
+    }
+    if(chmod(target, buffer.st_mode) == -1){
+        perror("Erreur lors du changement des permissions du fichier cible: ");
+        if(remove(target) == -1){
+            perror("Erreur lors de la suppression du fichier cible: ");
+        }
+        close(file1);
+        close(file2);
+        exit(EXIT_FAILURE);
+    }
+    close(file1);
+    close(file2);
+}
+
+void directory_copy(const char* source, const char* target){
+    DIR* dirS = opendir(source);
+    if(dirS == NULL){
+        perror("Erreur lors de l'ouverture du répertoire source: ");
+        exit(EXIT_FAILURE);
+    }
+    struct dirent* dpS;
+    while((dpS = readdir(dirS))!= NULL){
+        int dpS_length = strlen(dpS->d_name);
+        if(!(dpS->d_name[0] == '.' && dpS_length == 1) && !(dpS->d_name[0] == '.' && dpS->d_name[1] == '.' && dpS_length == 2)){
+            char* path1 = malloc(sizeof(char)*(strlen(source) + dpS_length + 2));
+            char* path2 = malloc(sizeof(char)*(strlen(target) + dpS_length + 2));
+            path_formatting(source, dpS->d_name, path1);     
+            path_formatting(target, dpS->d_name, path2);
+            struct stat buffer;
+            if(stat(path1, &buffer) == -1){
+                free(path1);
+                free(path2);
+                perror("Erreur lors de la récupération des permissions du fichier source: ");
+                closedir(dirS);
+                exit(EXIT_FAILURE);
+            }
+            if(S_ISDIR(buffer.st_mode)){                                        
+                if(mkdir(path2, 0777) == -1){                                   
+                    if(errno != 17){
+                        free(path1);
+                        free(path2);                                      
+                        perror("Erreur lors de la création du répertoire: ");   
+                        closedir(dirS);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                directory_copy(path1, path2);                                 // On remplace l'appelle récursif.
+                if(chmod(path2, buffer.st_mode) == -1){
+                    free(path1);
+                    free(path2);
+                    perror("Erreur lors du changement des permissions du répertoire ");
+                    exit(EXIT_FAILURE);
+                }
+            }
+            else{                                                               
+                file_copy(path1, path2);                          // On remplace la fonction copie fichier.
+            }
+            free(path1);
+            free(path2);
+        }
+    }
+    int c = closedir(dirS);
+}
+
+void copy(const char* source, const char* target){
+    errno = 0; // Je reset le errno car il était set à autre chose lorsque je faisais deux copy d'affiler (Il doit y avoir un truc à régler quelque part mais je ne sais pas)
+    DIR* dirS = opendir(source);
+    printf("source = %s\n", source);
+    if(errno == 20){ // La source n'est pas un répertoire.
+        closedir(dirS);
+        file_copy(source, target);
+    } else if (errno != 0){   // Sinon c'est une autre erreur.
+        closedir(dirS);
+        fprintf(stderr, "cp: %s\n", strerror(errno));
+    } else{ // Sinon c'est un répertoire.
+        closedir(dirS);
+        directory_copy(source, target);
+    }
+}
+
 void exec_command(char** args, uint nbargs, bool background){
     // Execute une ligne de commande simple
 
@@ -181,6 +323,12 @@ void exec_command(char** args, uint nbargs, bool background){
             } else {
                 fprintf(stderr, "%s: invalid pid\n", command);
             }
+        } else {
+            fprintf(stderr, "%s: missing arguments\n", command);
+        }
+    } else if(strcmp("cp", command) == 0){
+        if (nbargs > 2){
+            copy(args[1], args[2]);
         } else {
             fprintf(stderr, "%s: missing arguments\n", command);
         }
@@ -254,7 +402,6 @@ int spawn_proc (int in, int out, char* pipes, bool background) {
     return pid;
 }
 
-
 int main(int argc, char *argv[]){
     // On ignore tous les signaux qui peuvent fermer le terminal sans le vouloir.
     signal(SIGTTOU, SIG_IGN);  // Ignore le signal envoyé quand un processus tente de prendre contrôle du terminal
@@ -287,6 +434,7 @@ int main(int argc, char *argv[]){
 
         // Gestion entrée vide
         if(!nbcmd){
+            free(pipes);
             continue;
         }
 
@@ -296,7 +444,7 @@ int main(int argc, char *argv[]){
             if (pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] == '&' ){
                 pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] = '\0';
                 background = true;
-            } else if (pipes[nbcmd-1][0] == '&'){
+            } else if (pipes[nbcmd-1][0] == '&'){       // A supprimer également?
                 nbcmd = nbcmd - 1;
                 background = true;
             }
@@ -327,16 +475,14 @@ int main(int argc, char *argv[]){
             // C'est le bordel je sais et j'en suis désolé faites attention si vous faites le ménage ça fonctionne à peine.
             // On teste pour le background de la dernière fonction ici car getArgs détruit pipes dans l'appel suivant, je le stocke aussi dans un bool différent
             bool lastbackground = false;
-            if (pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] == '&' ){
-                pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] = '\0';
-                lastbackground = true;
-            } else if (pipes[nbcmd-1][0] == '&'){
-                nbcmd = nbcmd - 1;
+            int arg_length = strlen(pipes[0])-1;
+            if (pipes[0][arg_length] == '&' ){
+                pipes[0][arg_length] = '\0';
                 lastbackground = true;
             }
             
             // On parse selon &
-            char** bgargs = malloc(strlen(pipes[0]) * sizeof(char*));
+            char** bgargs = malloc((arg_length+1) * sizeof(char*));
             uint nb_bgargs = getArgs(bgargs, pipes[0], "&\n");
             background = true;
             
@@ -346,6 +492,7 @@ int main(int argc, char *argv[]){
                 char** cmd = malloc(strlen(bgargs[j]) * sizeof(char*));
                 uint nb = getArgs(cmd, bgargs[j], " \n");
                 exec_command(cmd,nb,background);
+                free(cmd);
             }
             
             char** cmd = malloc(strlen(bgargs[nb_bgargs-1]) * sizeof(char*));
