@@ -83,6 +83,7 @@ size_t askInput(char** entry){
     size_t taille = 0;
     getline(entry, &taille, stdin);
     if(taille < 0){
+        free(*entry);
         perror("askInput");
         exit(EXIT_FAILURE);
     }
@@ -156,6 +157,7 @@ void exec_command(char* line, bool background){
     char* command = args[0];
 
     if(strcmp(command, "exit") == 0) {
+        free(args);
         exit(0);
     } else if(strcmp("cd", command) == 0) {
         if(nbargs > 2){
@@ -239,9 +241,11 @@ void exec_command(char* line, bool background){
                 printf("[%d]\n",pid);
             } else {
                 // Si le processus est en foreground, on lui donne le terminal, on l'attend puis il le redonne quand il a fini.
-                tcsetpgrp(STDIN_FILENO,pid);
+                tcsetpgrp(STDIN_FILENO, pid);
                 waitpid(pid, 0, WUNTRACED);
-                tcsetpgrp(STDIN_FILENO,shell_pid);
+                tcsetpgrp(STDIN_FILENO, shell_pid);
+
+
             }
         }
     }
@@ -279,7 +283,6 @@ void exec_command_line(char* line, size_t size){
 
     char** pipes = malloc(size * sizeof(char*));
     uint nbcmd = getArgs(pipes, line, "|\n");
-    bool background = false;
 
     // Gestion entrée vide
     if(!nbcmd){
@@ -287,6 +290,7 @@ void exec_command_line(char* line, size_t size){
         return;
     }
 
+    bool background = false;
     int fd[2], in;
 
     if (nbcmd > 1){
@@ -325,6 +329,8 @@ void exec_command_line(char* line, size_t size){
         }
 
     } else {
+        // A FAIRE
+        // Vérifier qu'il n'y a pas trop de &, -> erreur syntaxe
         bool last_bg = false;
         int i_last_char = strlen(pipes[0])-1;
         if (pipes[0][i_last_char] == '&' ){
@@ -343,11 +349,16 @@ void exec_command_line(char* line, size_t size){
         }
 
         exec_command(bgargs[nb_bgargs-1], last_bg);
+      
+        free(bgargs);
     }
     free(pipes);
 }
 
 int main(int argc, char *argv[]){
+
+    // Initialisation du shell
+
     // On ignore tous les signaux qui peuvent fermer le terminal sans le vouloir.
     signal(SIGTTOU, SIG_IGN);  // Ignore le signal envoyé quand un processus tente de prendre contrôle du terminal
     signal(SIGTTIN, SIG_IGN);  // Ignore tentative de lecture stdin sans contrôle
@@ -373,25 +384,29 @@ int main(int argc, char *argv[]){
 
     while(true) {
         size_t entry_size = askInput(&entry);
-
+      
         char** commands = malloc(entry_size * sizeof(char*));
 
         uint nb_cmd = 1;
         ulong i = 0, cmd_start = 0;
 
         // Parsage selon '&&'
-        commands[0] = entry;
-        while(entry[i] != '\n'){
-            if(entry[i] == '&' && entry[i+1] == '&'){
-                entry[i] = '\0';
-                cmd_start = i+2;
-                commands[nb_cmd] = &entry[cmd_start];
-                nb_cmd++;
+        if(entry[0] == '\n'){
+            commands[0] = "\n\0";
+        } else {
+            commands[0] = entry;
+            while(entry[i] != '\n' && i < entry_size){
+                if(entry[i] == '&' && entry[i+1] == '&'){
+                    entry[i] = '\0';
+                    cmd_start = i+2;
+                    commands[nb_cmd] = &entry[cmd_start];
+                    nb_cmd++;
+                    i++;
+                }
                 i++;
             }
-            i++;
+            entry[i] = '\0';
         }
-        entry[i] = '\0';
 
         // Exécution de toutes les commandes séparémment
         for(int i = 0; i<nb_cmd; i++){
@@ -400,6 +415,6 @@ int main(int argc, char *argv[]){
 
         free(commands);
     }
-    free(entry);
+
     return 0;
 }
