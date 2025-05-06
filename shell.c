@@ -238,13 +238,13 @@ void exec_command(char* line, bool background){
 
             if(background){
                 // Print le pid du processus envoyé à la manière d'un shell classique
-                printf("[%d]\n", pid);
-                
+                printf("[%d]\n",pid);
             } else {
                 // Si le processus est en foreground, on lui donne le terminal, on l'attend puis il le redonne quand il a fini.
                 tcsetpgrp(STDIN_FILENO, pid);
                 waitpid(pid, 0, WUNTRACED);
                 tcsetpgrp(STDIN_FILENO, shell_pid);
+
 
             }
         }
@@ -349,7 +349,7 @@ void exec_command_line(char* line, size_t size){
         }
 
         exec_command(bgargs[nb_bgargs-1], last_bg);
-
+      
         free(bgargs);
     }
     free(pipes);
@@ -384,7 +384,7 @@ int main(int argc, char *argv[]){
 
     while(true) {
         size_t entry_size = askInput(&entry);
-
+      
         char** commands = malloc(entry_size * sizeof(char*));
 
         uint nb_cmd = 1;
@@ -414,7 +414,6 @@ int main(int argc, char *argv[]){
         }
 
         free(commands);
-        free(entry);
     }
 
     return 0;
