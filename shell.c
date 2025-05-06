@@ -59,10 +59,10 @@ void setIO(char *args[], int nbargs){
         }
     }
     if (nbargs > lastI+1 && lastI > -1){
-        fdi = open(args[lastI+1], O_RDWR | O_CREAT, 00777);
+        fdi = open(args[lastI+1], O_RDWR | O_CREAT, 0777);
     }
     if (nbargs > lastO+1 && lastO > -1){
-        fdo = open(args[lastO+1], O_RDWR | O_CREAT, 00777);
+        fdo = open(args[lastO+1], O_RDWR | O_CREAT, 0777);
     }
     if (fdi >= 0){
         dup2(fdi, STDIN_FILENO);
@@ -109,17 +109,17 @@ int getArgs(char* tab[], char* entry, const char* separators){
     return i;
 }
 
-void put_job_in_foreground (pid_t pgid, int cont){
+void put_job_in_foreground (pid_t pgid, bool cont){
     // Donne le terminal au job (groupe de processus qui ne contient techniquement qu'un seul processus et ses enfants dans notre cas)
     tcsetpgrp(STDIN_FILENO, pgid);
-    
+
     if(cont) {
         // On lui dit de continuer si il est interrompu j'ai mis ça sur 1 par défaut car on le stoppe jamais donc au cas ou voilà
         kill(-pgid, SIGCONT);
     }
-    
+
     waitpid(-pgid, 0, WUNTRACED);
-    
+
     // Redonne contrôle au shell
     tcsetpgrp(STDIN_FILENO, shell_pid);
 }
@@ -134,11 +134,11 @@ pid_t str_to_pid(const char* input){
     errno = 0;
     char* endptr;
     long val = strtol(input, &endptr, 10);
-    
+
     if (errno != 0 || *endptr != '\0' || val < 1){
         return -1;
     }
-    
+
     return (pid_t)val;
 }
 
@@ -226,7 +226,7 @@ void directory_copy(const char* source, const char* target){
         if(!(dpS->d_name[0] == '.' && dpS_length == 1) && !(dpS->d_name[0] == '.' && dpS->d_name[1] == '.' && dpS_length == 2)){
             char* path1 = malloc(sizeof(char)*(strlen(source) + dpS_length + 2));
             char* path2 = malloc(sizeof(char)*(strlen(target) + dpS_length + 2));
-            path_formatting(source, dpS->d_name, path1);     
+            path_formatting(source, dpS->d_name, path1);
             path_formatting(target, dpS->d_name, path2);
             struct stat buffer;
             if(stat(path1, &buffer) == -1){
@@ -236,12 +236,12 @@ void directory_copy(const char* source, const char* target){
                 closedir(dirS);
                 exit(EXIT_FAILURE);
             }
-            if(S_ISDIR(buffer.st_mode)){                                        
-                if(mkdir(path2, 0777) == -1){                                   
+            if(S_ISDIR(buffer.st_mode)){
+                if(mkdir(path2, 0777) == -1){
                     if(errno != 17){
                         free(path1);
-                        free(path2);                                      
-                        perror("Erreur lors de la création du répertoire: ");   
+                        free(path2);
+                        perror("Erreur lors de la création du répertoire: ");
                         closedir(dirS);
                         exit(EXIT_FAILURE);
                     }
@@ -254,7 +254,7 @@ void directory_copy(const char* source, const char* target){
                     exit(EXIT_FAILURE);
                 }
             }
-            else{                                                               
+            else{
                 file_copy(path1, path2);                          // On remplace la fonction copie fichier.
             }
             free(path1);
@@ -265,7 +265,9 @@ void directory_copy(const char* source, const char* target){
 }
 
 void copy(const char* source, const char* target){
-    errno = 0; // Je reset le errno car il était set à autre chose lorsque je faisais deux copy d'affiler (Il doit y avoir un truc à régler quelque part mais je ne sais pas)
+    // Je reset le errno car il était set à autre chose lorsque je faisais deux copy d'affiler
+    // (Il doit y avoir un truc à régler quelque part mais je ne sais pas)
+    errno = 0;
     DIR* dirS = opendir(source);
     printf("source = %s\n", source);
     if(errno == 20){ // La source n'est pas un répertoire.
@@ -280,13 +282,20 @@ void copy(const char* source, const char* target){
     }
 }
 
-void exec_command(char** args, uint nbargs, bool background){
-    // Execute une ligne de commande simple
+void exec_command(char* line, bool background){
+    /* Execute une ligne de commande simple */
+
+    // Parsage de la ligne de commande sur les espaces et les retours à la ligne
+    char** args = malloc(strlen(line) * sizeof(char*));
+    uint nbargs = getArgs(args, line, " \n");
 
     // Gestion de l'entrée vide ou avec uniquement des espaces
-    if(!nbargs){
+    if(nbargs == 0){
         return;
     }
+
+    // Gère les entrées sorties si il y a des redirections
+    setIO(args, nbargs);
 
     char* command = args[0];
 
@@ -303,51 +312,59 @@ void exec_command(char** args, uint nbargs, bool background){
             }
         }
     } else if(strcmp("fg", command) == 0) {
-        // Si je fais fg, je mets en foreground le processus passé en paramètre.
+        // Le processus passé en paramètre est mis en foreground
         if (nbargs > 1){
             pid_t newpid = str_to_pid(args[1]);
             if (newpid != -1){
                 put_job_in_foreground(newpid, 1);
             } else {
-                fprintf(stderr, "%s: invalid pid\n", command);
+                fprintf(stderr, "fg: invalid pid\n");
             }
         } else {
-            fprintf(stderr, "%s: missing arguments\n", command);
+            fprintf(stderr, "fg: missing arguments\n");
         }
     } else if(strcmp("bg", command) == 0) {
-        // Si je fais bg, je mets en background le processus passé en paramètre.
+        // Le processus passé en paramètre est mis en background
         if (nbargs > 1){
             pid_t newpid = str_to_pid(args[1]);
             if (newpid != -1){
                 put_job_in_background(newpid);
             } else {
-                fprintf(stderr, "%s: invalid pid\n", command);
+                fprintf(stderr, "bg: invalid pid\n");
             }
         } else {
-            fprintf(stderr, "%s: missing arguments\n", command);
+            fprintf(stderr, "bg: missing arguments\n");
         }
     } else if(strcmp("cp", command) == 0){
         if (nbargs > 2){
             copy(args[1], args[2]);
         } else {
-            fprintf(stderr, "%s: missing arguments\n", command);
+            fprintf(stderr, "cp: missing arguments\n");
         }
     } else {
-        // Gère les entrées sorties si il y a des redirections
-        setIO(args, nbargs);
-        
+
         pid_t pid = fork();
         if(pid == 0){
             // On met le fils dans son propre groupe
-            setpgid(0,0);
-            // On lui donne le contrôle du terminal si il est pas lancé en background
+            setpgid(pid, pid);
+
+            // On lui donne le contrôle du terminal s'il n'est pas lancé en background
             if(!background){
-                tcsetpgrp(STDIN_FILENO, getpid());
+                tcsetpgrp(STDIN_FILENO, pid);
             }
-            
+
+            // Le processus s'arrêtera si une entrée est demandée
+            // ou si un autre signal d'arrêt lui est envoyé
+            signal (SIGINT, SIG_DFL);
+            signal (SIGQUIT, SIG_DFL);
+            signal (SIGTSTP, SIG_DFL);
+            signal (SIGTTIN, SIG_DFL);
+            signal (SIGTTOU, SIG_DFL);
+            signal (SIGCHLD, SIG_DFL);
+
             // On éxécute la fonction
             execvp(args[0], args);
-            
+
             // Seulement si le exec ne passe pas, éxecute la suite
             if(compare("./", command) || compare("../", command) || command[0] == '/'){
                 // Ici, l'erreur devrait être 'no such file or directory'
@@ -358,30 +375,27 @@ void exec_command(char** args, uint nbargs, bool background){
             free(args);
             exit(127);
         } else{
-            setpgid(pid,pid);
-            
+            // On met le fils dans son propre groupe
+            setpgid(pid, pid);
+
             if(background){
                 // Print le pid du processus envoyé à la manière d'un shell classique
                 printf("[%d]\n",pid);
-            }
-            // Si le processus est en foreground, on lui donne le terminal, on l'attend puis il le redonne quand il a fini.
-            if(!background){
+            } else {
+                // Si le processus est en foreground, on lui donne le terminal, on l'attend puis il le redonne quand il a fini.
                 tcsetpgrp(STDIN_FILENO,pid);
                 waitpid(pid, 0, WUNTRACED);
                 tcsetpgrp(STDIN_FILENO,shell_pid);
             }
         }
     }
-
+    free(args);
 }
 
-int spawn_proc (int in, int out, char* pipes, bool background) {
+void spawn_proc (int in, int out, char* pipes, bool background) {
 
-    char** args = malloc(strlen(pipes) * sizeof(char*));
-    uint nbargs = getArgs(args, pipes, " \n");
-
-    pid_t pid;
-    if ((pid = fork()) == 0){
+    pid_t pid = fork();
+    if (pid == 0){
         if (in != 0){
             dup2(in, STDIN_FILENO);
             close(in);
@@ -392,14 +406,85 @@ int spawn_proc (int in, int out, char* pipes, bool background) {
             close(out);
         }
 
-        exec_command(args, nbargs, background);
+        exec_command(pipes, background);
         exit(0);
     } else {
         waitpid(pid, 0, 0);
     }
 
-    free(args);
-    return pid;
+    return;
+}
+
+void exec_command_line(char* line, size_t size){
+
+    char** pipes = malloc(size * sizeof(char*));
+    uint nbcmd = getArgs(pipes, line, "|\n");
+    bool background = false;
+
+    // Gestion entrée vide
+    if(!nbcmd){
+        free(pipes);
+        return;
+    }
+
+    int fd[2], in;
+
+    if (nbcmd > 1){
+        /* Faire vérif & ailleurs que dernier pipe */
+        char* last_cmd = pipes[nbcmd-1];
+        ulong i_last_char = strlen(last_cmd)-1;
+        if (pipes[nbcmd-1][0] == '&' && i_last_char == 0){
+            nbcmd = nbcmd - 1;
+            background = true;
+        } else if (last_cmd[i_last_char] == '&' ){
+            last_cmd[i_last_char] = '\0';
+            background = true;
+        }
+        // Le premier processus doit prendre comme entrée le file descriptor original
+        in = 0;
+
+        // On crée tous les processus dans les pipes, sauf le dernier
+        for (int i = 0; i < nbcmd-1; ++i){
+            pipe(fd);
+
+            spawn_proc(in, fd[1], pipes[i], false);
+
+            close(fd[1]);
+
+            in = fd[0];
+        }
+        // Dernière commande prend sont entrée depuis le dernier pipe et affiche sur la sortie standard
+        spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1], background);
+
+        close(fd[0]);
+        close(fd[1]);
+
+        // Remet la lecture du shell à l'entrée standard
+        if (in != 0){
+            dup2(0, in);
+        }
+
+    } else {
+        bool last_bg = false;
+        int i_last_char = strlen(pipes[0])-1;
+        if (pipes[0][i_last_char] == '&' ){
+            pipes[0][i_last_char] = '\0';
+            last_bg = true;
+        }
+
+        // On parse selon &
+        char** bgargs = malloc((i_last_char+1) * sizeof(char*));
+        uint nb_bgargs = getArgs(bgargs, pipes[0], "&\n");
+
+        // Tous les éléments du tableau sauf le dernier sont suivis d'un &
+        // donc ils vont en background
+        for (int j=0; j<nb_bgargs-1; j++){
+            exec_command(bgargs[j], true);
+        }
+
+        exec_command(bgargs[nb_bgargs-1], last_bg);
+    }
+    free(pipes);
 }
 
 int main(int argc, char *argv[]){
@@ -407,16 +492,16 @@ int main(int argc, char *argv[]){
     signal(SIGTTOU, SIG_IGN);  // Ignore le signal envoyé quand un processus tente de prendre contrôle du terminal
     signal(SIGTTIN, SIG_IGN);  // Ignore tentative de lecture stdin sans contrôle
     signal(SIGTSTP, SIG_IGN);  // Ignore Ctrl+Z dans le shell lui-même
-    
+
     // On récupère le pid de notre terminal
     shell_pid = getpid();
-       
+
     // On le met dans son propre groupe
     if (setpgid(shell_pid,shell_pid) < 0) {
         perror("setpgid");
         exit(1);
     }
-    
+
     // On lui donne contrôle du terminal
     if (tcsetpgrp(STDIN_FILENO,shell_pid) < 0) {
         perror("tcsetpgrp");
@@ -424,86 +509,34 @@ int main(int argc, char *argv[]){
     }
 
     char* entry = NULL;
-    int in, fd[2];
 
     while(true) {
         size_t entry_size = askInput(&entry);
-        char** pipes = malloc(entry_size * sizeof(char*));
-        uint nbcmd = getArgs(pipes, entry, "|\n");
-        bool background = false;
 
-        // Gestion entrée vide
-        if(!nbcmd){
-            free(pipes);
-            continue;
+        char** commands = malloc(entry_size * sizeof(char*));
+        uint nb_cmd = 1;
+        ulong i = 0;
+        ulong cmd_start = 0;
+
+        commands[0] = entry;
+        while(entry[i] != '\n'){
+            if(entry[i] == '&' && entry[i+1] == '&'){
+                entry[i] = '\0';
+                cmd_start = i+2;
+                commands[nb_cmd] = &entry[cmd_start];
+                nb_cmd++;
+                i++;
+            }
+            i++;
+        }
+        entry[i] = '\0';
+
+        for(int i = 0; i<nb_cmd; i++){
+            printf("%d : %s\n", i, commands[i]);
+            exec_command_line(commands[i], strlen(commands[i]));
         }
 
-        in = 0;
-
-        if (nbcmd > 1){
-            if (pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] == '&' ){
-                pipes[nbcmd-1][strlen(pipes[nbcmd-1])-1] = '\0';
-                background = true;
-            } else if (pipes[nbcmd-1][0] == '&'){       // A supprimer également?
-                nbcmd = nbcmd - 1;
-                background = true;
-            }
-            /* The first process should get its input from the original file descriptor 0.  */
-
-            /* Note the loop bound, we spawn here all, but the last stage of the pipeline.  */
-            for (int i = 0; i < nbcmd-1; ++i){
-                pipe(fd);
-
-                spawn_proc(in, fd[1], pipes[i], false); // J'ai mis ça a false, pour que seul la dernière fonction du pipe soit en background, je sais pas si c'est bien mais dans le cas contraire test1 récupérait la valeur du print du pid quand je faisait ./test2 | ./test1&.
-
-                close(fd[1]);
-
-                in = fd[0];
-            }
-            // Dernière commande prend sont entrée depuis le dernier pipe et affiche sur la sortie standard
-            spawn_proc(in, STDOUT_FILENO, pipes[nbcmd-1], background);
-
-            close(fd[0]);
-            close(fd[1]);
-
-            // Remet la lecture du shell à l'entrée standard
-            if (in != 0){
-                dup2(0, in);
-            }
-
-        } else {
-            // C'est le bordel je sais et j'en suis désolé faites attention si vous faites le ménage ça fonctionne à peine.
-            // On teste pour le background de la dernière fonction ici car getArgs détruit pipes dans l'appel suivant, je le stocke aussi dans un bool différent
-            bool lastbackground = false;
-            int arg_length = strlen(pipes[0])-1;
-            if (pipes[0][arg_length] == '&' ){
-                pipes[0][arg_length] = '\0';
-                lastbackground = true;
-            }
-            
-            // On parse selon &
-            char** bgargs = malloc((arg_length+1) * sizeof(char*));
-            uint nb_bgargs = getArgs(bgargs, pipes[0], "&\n");
-            background = true;
-            
-            // Tous les éléments du tableau sauf le dernier sont suivis d'un & donc je les mets en background
-            for (int j=0;j<nb_bgargs-1;j++){
-                // Obligé de découper selon espace 1 par 1 et de les traiter comme des commandes solo
-                char** cmd = malloc(strlen(bgargs[j]) * sizeof(char*));
-                uint nb = getArgs(cmd, bgargs[j], " \n");
-                exec_command(cmd,nb,background);
-                free(cmd);
-            }
-            
-            char** cmd = malloc(strlen(bgargs[nb_bgargs-1]) * sizeof(char*));
-            uint nb = getArgs(cmd, bgargs[nb_bgargs-1], " \n");
-
-            exec_command(cmd, nb, lastbackground);
-
-            free(bgargs);
-            free(cmd);
-        }
-        free(pipes);
+        free(commands);
     }
     free(entry);
     return 0;
