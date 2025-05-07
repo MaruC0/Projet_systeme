@@ -23,8 +23,8 @@
 pid_t shell_pid;
 int shell_stdout;
 
+/* Compare la chaîne str1 au début de la chaîne str2. */
 bool compare(char* str1, char* str2){
-    // Compare la chaîne str1 au début de la chaîne str2.
     int i=0;
     if(str1[0] == '\0' && str2[0] == '\0'){ // Cas deux string vide.
         return true;
@@ -102,6 +102,8 @@ int getArgs(char* tab[], char* entry, const char* separators){
     return i;
 }
 
+/*  Donne le terminal au job spécificé en paramètre, l'attend puis redonne le terminal au shell.
+    Si cont est true, continue le job si il était stoppé  */
 void put_job_in_foreground (pid_t pgid, bool cont){
     // Donne le terminal au job (groupe de processus qui ne contient techniquement qu'un seul processus et ses enfants dans notre cas)
     tcsetpgrp(STDIN_FILENO, pgid);
@@ -118,6 +120,7 @@ void put_job_in_foreground (pid_t pgid, bool cont){
     tcsetpgrp(STDIN_FILENO, shell_pid);
 }
 
+/*  Fait continuer le job donné en paramètre sans lui donner accès au terminal  */
 void put_job_in_background (pid_t pgid){
     // Le processus ne prend pas le terminal, et il continue s'il était interrompu
     kill(-pgid, SIGCONT);
@@ -173,7 +176,7 @@ void exec_command(char* line, bool background){
         if (nbargs > 1){
             pid_t newpid = str_to_pid(args[1]);
             if (newpid != -1){
-                put_job_in_foreground(newpid, 1);
+                put_job_in_foreground(newpid, true);
             } else {
                 fprintf(stderr, "fg: invalid pid\n");
             }
@@ -257,7 +260,7 @@ void exec_command(char* line, bool background){
 }
 
 /*  Crée un processus qui va exécuter une command simple
-    sur les entrées et sorties des files descriptor spécifiés en paramètres */
+    sur les entrées et sorties des files descriptor spécifiés en paramètres  */
 void spawn_proc (int in, int out, char* pipes, bool background) {
 
     pid_t pid = fork();
