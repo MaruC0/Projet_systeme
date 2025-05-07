@@ -1,5 +1,6 @@
 #include "copy.h"
 
+#include <stdlib.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -22,6 +23,7 @@
 // Variable globale qui garde en mémoire le pid de notre shell
 pid_t shell_pid;
 int shell_stdout;
+char* last_path = NULL;
 
 /* Compare la chaîne str1 au début de la chaîne str2. */
 bool compare(char* str1, char* str2){
@@ -76,6 +78,7 @@ size_t askInput(char** entry){
     size_t taille = 0;
     getline(entry, &taille, stdin);
     if(taille < 0){
+        if(last_path != NULL) free(last_path);
         free(*entry);
         perror("askInput");
         exit(EXIT_FAILURE);
@@ -140,12 +143,11 @@ pid_t str_to_pid(const char* input){
     return (pid_t)val;
 }
 
-/*  Execute une ligne de commande simple,
+/*  Exécute une ligne de commande simple,
     et la place en background si spécifié  */
 void exec_command(char* line, bool background){
 
     // Parsage de la ligne de commande sur les espaces et les retours à la ligne
-    printf("taille = %ld\n", strlen(line));
     char** args = malloc((strlen(line)+1) * sizeof(char*));
     uint nbargs = getArgs(args, line, " \n");
 
@@ -169,7 +171,7 @@ void exec_command(char* line, bool background){
             chdir(getenv("HOME"));
         } else {
             if(chdir(args[1]) != 0){
-                fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
+                    fprintf(stderr, "cd: %s: %s\n", args[1], strerror(errno));
             }
         }
     } else if(strcmp("fg", command) == 0) {
@@ -197,15 +199,13 @@ void exec_command(char* line, bool background){
             fprintf(stderr, "bg: missing arguments\n");
         }
     } else if(strcmp("cp", command) == 0){
-        if(strcmp("-r", args[1]) == 0){         // copie de répertoire
+        if(strcmp("-r", args[1]) == 0){    // copie de répertoire
             if(nbargs > 3){
                 directory_copy(args[2], args[3]);
-            }
-            else{
+            } else {
                 fprintf(stderr, "cp: missing arguments\n");
             }
-        }
-        else{                                   // copie de fichier
+        } else {                                  // copie de fichier
             if (nbargs > 2){
                 file_copy(args[1], args[2]);
             } else {
@@ -233,10 +233,10 @@ void exec_command(char* line, bool background){
             signal (SIGTTOU, SIG_DFL);
             signal (SIGCHLD, SIG_DFL);
 
-            // On éxécute la fonction
+            // On exécute la fonction
             execvp(args[0], args);
 
-            // Seulement si le exec ne passe pas, éxecute la suite
+            // Seulement si le exec ne passe pas, exécute la suite
             if(compare("./", command) || compare("../", command) || command[0] == '/'){
                 // Ici, l'erreur devrait être 'no such file or directory'
                 fprintf(stderr, "%s: %s\n", command, strerror(errno));
@@ -244,6 +244,7 @@ void exec_command(char* line, bool background){
                 fprintf(stderr, "%s: command not found\n", command);
             }
             free(args);
+            if(last_path != NULL) free(last_path);
             exit(127);
         } else{
             // On met le fils dans son propre groupe
@@ -270,8 +271,8 @@ void exec_command(char* line, bool background){
     free(args);
 }
 
-/*  Crée un processus qui va exécuter une command simple
-    sur les entrées et sorties des files descriptor spécifiés en paramètres  */
+/*  Crée un processus qui va exécuter une commande simple
+    sur les entrées et sorties des file descriptors spécifiés en paramètre  */
 void spawn_proc (int in, int out, char* pipes, bool background) {
 
     pid_t pid = fork();
@@ -295,7 +296,7 @@ void spawn_proc (int in, int out, char* pipes, bool background) {
     return;
 }
 
-/*  Exécute une ligne de commande contenant potentiellment des pipes  */
+/*  Exécute une ligne de commande contenant potentiellement des pipes  */
 void exec_command_line(char* line, size_t size){
 
     char** pipes = malloc(size * sizeof(char*));
@@ -311,9 +312,11 @@ void exec_command_line(char* line, size_t size){
     int fd[2], in;
 
     if (nbcmd > 1){
-        /* Faire vérif & ailleurs que dernier pipe */
+        // Détection de & pour mise en background
         char* last_cmd = pipes[nbcmd-1];
         ulong i_last_char = strlen(last_cmd)-1;
+
+        // Détection de & placer ailleurs que dans la dernière commande
         for(int i = 0; i<nbcmd-1; i+=1){
             int last_non_space = strlen(pipes[i]) -1;
             while(last_non_space > 0 && pipes[i][last_non_space] == ' '){
@@ -324,6 +327,8 @@ void exec_command_line(char* line, size_t size){
                 return;
             }
         }
+
+        // Détection de & à la fin de la dernière commande
         if (pipes[nbcmd-1][0] == '&' && i_last_char == 0){
             nbcmd = nbcmd - 1;
             background = true;
@@ -331,6 +336,7 @@ void exec_command_line(char* line, size_t size){
             last_cmd[i_last_char] = '\0';
             background = true;
         }
+
         // Le premier processus doit prendre comme entrée le file descriptor original
         in = 0;
 
@@ -356,8 +362,7 @@ void exec_command_line(char* line, size_t size){
         }
 
     } else {
-        // A FAIRE
-        // Vérifier qu'il n'y a pas trop de &, -> erreur syntaxe
+        // Détection de & pour la mise en background
         bool last_bg = false;
         int i_last_char = strlen(pipes[0])-1;
         if (pipes[0][i_last_char] == '&' ){
@@ -421,10 +426,10 @@ int main(int argc, char *argv[]){
         // Parsage selon '&&'
         commands[0] = entry;
         while(entry[i] != '\0' && i < entry_size-1){
+            // Cas pour une entrée complètement vide, avec une redirection de l'entrée par exemple
             if(entry[i] == -66){
                 break;
-            }
-            else if(entry[i] == '&' && entry[i+1] == '&'){
+            } else if(entry[i] == '&' && entry[i+1] == '&'){
                 entry[i] = '\0';
                 cmd_start = i+2;
                 commands[nb_cmd] = &entry[cmd_start];
@@ -433,9 +438,6 @@ int main(int argc, char *argv[]){
             }
             i++;
         }
-        // Peut se faire sur une addresse qui ne fait pas partie du malloc
-        // si la tailler alouer automatiquement pour entry fait exactement la taille de l'entrée.
-        // Pour l'instant ce n'est jamais arrivée.
         entry[i] = '\0';
 
         // Exécution de toutes les commandes séparémment
@@ -445,6 +447,7 @@ int main(int argc, char *argv[]){
 
         free(commands);
         free(entry);
+        fflush(stdout);
     }
 
     return 0;
