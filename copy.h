@@ -1,3 +1,6 @@
+#ifndef _COPY_H
+#define _COPY_H
+
 #define _GNU_SOURCE // Sert pour la copie de fichier/répertoire.
 #include <stdlib.h>
 #include <stdio.h>
@@ -89,7 +92,7 @@ void directory_copy(const char* source, const char* target){
         perror("Erreur lors de l'ouverture du répertoire source: ");
         exit(EXIT_FAILURE);
     }
-    DIR* dirC = opendir(cible);
+    DIR* dirC = opendir(target);
     if(dirC == NULL){   // On vérifie que le répertoire cible existe.
         if(errno == 2){     // Si le répertoire cible n'existe pas.
             struct stat bufferS;
@@ -98,7 +101,7 @@ void directory_copy(const char* source, const char* target){
                 closedir(dirS);
                 exit(EXIT_FAILURE);
             }
-            if(mkdir(cible, bufferS.st_mode) == -1){
+            if(mkdir(target, bufferS.st_mode) == -1){
                 perror("Erreur lors du changement des permissions du répertoire cible");
                 closedir(dirS);
                 exit(EXIT_FAILURE);
@@ -154,7 +157,7 @@ void directory_copy(const char* source, const char* target){
             free(path2);
         }
     }
-    int c = closedir(dirS);
+    closedir(dirS);
 }
 
 void copy(const char* source, const char* target){
@@ -176,3 +179,5 @@ void copy(const char* source, const char* target){
         directory_copy(source, target);
     }
 }
+
+#endif
