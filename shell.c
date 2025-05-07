@@ -349,7 +349,7 @@ void exec_command_line(char* line, size_t size){
         }
 
         exec_command(bgargs[nb_bgargs-1], last_bg);
-      
+
         free(bgargs);
     }
     free(pipes);
@@ -384,29 +384,28 @@ int main(int argc, char *argv[]){
 
     while(true) {
         size_t entry_size = askInput(&entry);
-      
+
         char** commands = malloc(entry_size * sizeof(char*));
 
         uint nb_cmd = 1;
         ulong i = 0, cmd_start = 0;
 
         // Parsage selon '&&'
-        if(entry[0] == '\n'){
-            commands[0] = "\n\0";
-        } else {
-            commands[0] = entry;
-            while(entry[i] != '\n' && i < entry_size){
-                if(entry[i] == '&' && entry[i+1] == '&'){
-                    entry[i] = '\0';
-                    cmd_start = i+2;
-                    commands[nb_cmd] = &entry[cmd_start];
-                    nb_cmd++;
-                    i++;
-                }
+        commands[0] = entry;
+        while(entry[i] != '\n' && i <= entry_size){
+            if(entry[i] == '&' && entry[i+1] == '&'){
+                entry[i] = '\0';
+                cmd_start = i+2;
+                commands[nb_cmd] = &entry[cmd_start];
+                nb_cmd++;
                 i++;
             }
-            entry[i] = '\0';
+            i++;
         }
+        // Peut se faire sur une addresse qui ne fait pas partie du malloc
+        // si la tailler alouer automatiquement pour entry fait exactement la taille de l'entrée.
+        // Pour l'instant ce n'est jamais arrivée.
+        entry[i+1] = '\0';
 
         // Exécution de toutes les commandes séparémment
         for(int i = 0; i<nb_cmd; i++){
@@ -414,6 +413,7 @@ int main(int argc, char *argv[]){
         }
 
         free(commands);
+        free(entry);
     }
 
     return 0;
