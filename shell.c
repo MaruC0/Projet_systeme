@@ -145,7 +145,8 @@ pid_t str_to_pid(const char* input){
 void exec_command(char* line, bool background){
 
     // Parsage de la ligne de commande sur les espaces et les retours à la ligne
-    char** args = malloc(strlen(line) * sizeof(char*));
+    printf("taille = %ld\n", strlen(line));
+    char** args = malloc((strlen(line)+1) * sizeof(char*));
     uint nbargs = getArgs(args, line, " \n");
 
     // Gestion de l'entrée vide ou avec uniquement des espaces
@@ -365,7 +366,7 @@ void exec_command_line(char* line, size_t size){
         }
 
         // On parse selon &
-        char** bgargs = malloc((i_last_char+1) * sizeof(char*));
+        char** bgargs = malloc((i_last_char+2) * sizeof(char*));
         uint nb_bgargs = getArgs(bgargs, pipes[0], "&\n");
 
         // Tous les éléments du tableau sauf le dernier sont suivis d'un &
@@ -419,8 +420,11 @@ int main(int argc, char *argv[]){
 
         // Parsage selon '&&'
         commands[0] = entry;
-        while(entry[i] != '\n' && i <= entry_size){
-            if(entry[i] == '&' && entry[i+1] == '&'){
+        while(entry[i] != '\0' && i < entry_size-1){
+            if(entry[i] == -66){
+                break;
+            }
+            else if(entry[i] == '&' && entry[i+1] == '&'){
                 entry[i] = '\0';
                 cmd_start = i+2;
                 commands[nb_cmd] = &entry[cmd_start];
@@ -432,7 +436,7 @@ int main(int argc, char *argv[]){
         // Peut se faire sur une addresse qui ne fait pas partie du malloc
         // si la tailler alouer automatiquement pour entry fait exactement la taille de l'entrée.
         // Pour l'instant ce n'est jamais arrivée.
-        entry[i+1] = '\0';
+        entry[i] = '\0';
 
         // Exécution de toutes les commandes séparémment
         for(int i = 0; i<nb_cmd; i++){
