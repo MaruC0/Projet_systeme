@@ -42,41 +42,34 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
+/* Redirige les entrées et sorties du processus courant
+   selon les chevrons présents dans la ligne de commande */
 void setIO(char *args[], int nbargs){
-    int lastI = -1;
-    int lastO = -1;
-    int fdi = -2;
-    int fdo = -2;
+    int fdi = -2, fdo = -2;
     for (int i=1; i<nbargs; i++){
-        if(args[i][0] == '<'){
-            lastI = i;
-        } else if(args[i][0] == '>'){
-            lastO = i;
+        if(args[i][0] == '<' && nbargs > i+1){
+            fdi = open(args[i+1], O_RDWR | O_CREAT | O_TRUNC, 0777);
+        } else if(args[i][0] == '>' && nbargs > i+1){
+            fdo = open(args[i+1], O_RDWR | O_CREAT | O_TRUNC, 0777);
         }
-    }
-    if (nbargs > lastI+1 && lastI > -1){
-        fdi = open(args[lastI+1], O_RDWR | O_CREAT, 0777);
-    }
-    if (nbargs > lastO+1 && lastO > -1){
-        fdo = open(args[lastO+1], O_RDWR | O_CREAT, 0777);
     }
     if (fdi >= 0){
         dup2(fdi, STDIN_FILENO);
         close(fdi);
-    } else if (fdi == -1){
+    } else if(fdi == -1) {
         printf("erreur fdi: %s\n", strerror(errno));
     }
     if (fdo >= 0){
         dup2(fdo, STDOUT_FILENO);
         close(fdo);
-    } else if (fdo == -1){
+    } else if(fdo == -1){
         printf("erreur fdo: %s\n", strerror(errno));
     }
 }
 
-size_t askInput(char** entry){
-    /* Affiche le path actuel, demande une entrée,
+/*  Affiche le path actuel, demande une entrée,
     et la place dans la variable passée en paramètre. */
+size_t askInput(char** entry){
     char* currentpath = getcwd(NULL, 0);
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
     free(currentpath);
@@ -90,6 +83,9 @@ size_t askInput(char** entry){
     return taille;
 }
 
+/*  Parse la string entry selon les caractères dans la string seprators,
+    qui servent de délimiteurs, et places chaque token dans le tableau tab.
+    Si separators est NULL, les séparateur spar défauts sont ' ' et '\n' */
 int getArgs(char* tab[], char* entry, const char* separators){
     if(!separators){
         separators = " \n";
