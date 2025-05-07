@@ -126,8 +126,8 @@ void put_job_in_background (pid_t pgid){
     kill(-pgid, SIGCONT);
 }
 
-/*  Converti la string d'entrée en pid_t
-    Renvoi -1 si la conversion est impossible */
+/*  Convertis la string d'entrée en pid_t
+    Renvoie -1 si la conversion est impossible  */
 pid_t str_to_pid(const char* input){
     errno = 0;
     char* endptr;
@@ -196,10 +196,20 @@ void exec_command(char* line, bool background){
             fprintf(stderr, "bg: missing arguments\n");
         }
     } else if(strcmp("cp", command) == 0){
-        if (nbargs > 2){
-            copy(args[1], args[2]);
-        } else {
-            fprintf(stderr, "cp: missing arguments\n");
+        if(strcmp("-r", args[1]) == 0){         // copie de répertoire
+            if(nbargs > 3){
+                directory_copy(args[2], args[3]);
+            }
+            else{
+                fprintf(stderr, "cp: missing arguments\n");
+            }
+        }
+        else{                                   // copie de fichier
+            if (nbargs > 2){
+                file_copy(args[1], args[2]);
+            } else {
+                fprintf(stderr, "cp: missing arguments\n");
+            }
         }
     } else {
 
