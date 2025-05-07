@@ -42,8 +42,8 @@ bool compare(char* str1, char* str2){
     return true;
 }
 
-/* Redirige les entrées et sorties du processus courant
-   selon les chevrons présents dans la ligne de commande */
+/*  Redirige les entrées et sorties du processus courant
+    selon les chevrons présents dans la ligne de commande  */
 void setIO(char *args[], int nbargs){
     int fdi = -2, fdo = -2;
     for (int i=1; i<nbargs; i++){
@@ -68,7 +68,7 @@ void setIO(char *args[], int nbargs){
 }
 
 /*  Affiche le path actuel, demande une entrée,
-    et la place dans la variable passée en paramètre. */
+    et la place dans la variable passée en paramètre.  */
 size_t askInput(char** entry){
     char* currentpath = getcwd(NULL, 0);
     printf("%s%s%s$ ", KCYN, currentpath, KNRM);
@@ -85,7 +85,7 @@ size_t askInput(char** entry){
 
 /*  Parse la string entry selon les caractères dans la string seprators,
     qui servent de délimiteurs, et places chaque token dans le tableau tab.
-    Si separators est NULL, les séparateur spar défauts sont ' ' et '\n' */
+    Si separators est NULL, les séparateur spar défauts sont ' ' et '\n'  */
 int getArgs(char* tab[], char* entry, const char* separators){
     if(!separators){
         separators = " \n";
@@ -107,7 +107,8 @@ void put_job_in_foreground (pid_t pgid, bool cont){
     tcsetpgrp(STDIN_FILENO, pgid);
 
     if(cont) {
-        // On lui dit de continuer si il est interrompu j'ai mis ça sur 1 par défaut car on le stoppe jamais donc au cas ou voilà
+        // Il continue s'il est interrompu
+        // cont par défaut à 1 dans les appels car on ne le stope jamais
         kill(-pgid, SIGCONT);
     }
 
@@ -118,12 +119,13 @@ void put_job_in_foreground (pid_t pgid, bool cont){
 }
 
 void put_job_in_background (pid_t pgid){
-    // On ne lui donne pas le terminal, et on le continue si jamais il était interrompu
+    // Le processus ne prend pas le terminal, et il continue s'il était interrompu
     kill(-pgid, SIGCONT);
 }
 
+/*  Converti la string d'entrée en pid_t
+    Renvoi -1 si la conversion est impossible */
 pid_t str_to_pid(const char* input){
-    // Transforme l'input qui est un char* en pid_t, avec gestion d'erreur si l'entrée est pas un nombre.
     errno = 0;
     char* endptr;
     long val = strtol(input, &endptr, 10);
@@ -135,8 +137,9 @@ pid_t str_to_pid(const char* input){
     return (pid_t)val;
 }
 
+/*  Execute une ligne de commande simple,
+    et la place en background si spécifié  */
 void exec_command(char* line, bool background){
-    /* Execute une ligne de commande simple */
 
     // Parsage de la ligne de commande sur les espaces et les retours à la ligne
     char** args = malloc(strlen(line) * sizeof(char*));
@@ -246,12 +249,15 @@ void exec_command(char* line, bool background){
         }
     }
     // Redonne la sortie standard au shell
+    // Force l'affichage des autres processus avant de rétablir la sortie standard
     fflush(stdout);
     dup2(shell_stdout, STDOUT_FILENO);
 
     free(args);
 }
 
+/*  Crée un processus qui va exécuter une command simple
+    sur les entrées et sorties des files descriptor spécifiés en paramètres */
 void spawn_proc (int in, int out, char* pipes, bool background) {
 
     pid_t pid = fork();
@@ -275,6 +281,7 @@ void spawn_proc (int in, int out, char* pipes, bool background) {
     return;
 }
 
+/*  Exécute une ligne de commande contenant potentiellment des pipes  */
 void exec_command_line(char* line, size_t size){
 
     char** pipes = malloc(size * sizeof(char*));
@@ -378,6 +385,7 @@ int main(int argc, char *argv[]){
 
     char* entry = NULL;
 
+    // Boucle principale du shell
     while(true) {
         size_t entry_size = askInput(&entry);
 
