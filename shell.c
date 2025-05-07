@@ -1,4 +1,4 @@
-#include "copy.c"
+#include "copy.h"
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -313,6 +313,16 @@ void exec_command_line(char* line, size_t size){
         /* Faire vérif & ailleurs que dernier pipe */
         char* last_cmd = pipes[nbcmd-1];
         ulong i_last_char = strlen(last_cmd)-1;
+        for(int i = 0; i<nbcmd-1; i+=1){
+            int last_non_space = strlen(pipes[i]) -1;
+            while(last_non_space > 0 && pipes[i][last_non_space] == ' '){
+                last_non_space -= 1;
+            }
+            if(pipes[i][last_non_space] == '&'){
+                fprintf(stderr, "syntax error near unexpected token '|'\n");
+                return;
+            }
+        }
         if (pipes[nbcmd-1][0] == '&' && i_last_char == 0){
             nbcmd = nbcmd - 1;
             background = true;
