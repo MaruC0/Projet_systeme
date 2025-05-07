@@ -1,5 +1,5 @@
-#ifndef _COPY_H
-#define _COPY_H
+#ifndef _COPY_H_
+#define _COPY_H_
 
 #define _GNU_SOURCE // Sert pour la copie de fichier/répertoire.
 #include <stdlib.h>
@@ -11,8 +11,8 @@
 #include <string.h>
 #include <fcntl.h>
 
+/*  Permet d'ajouter un nom de fichier au path pour obtenir son path absolue.  */
 void path_formatting(const char* e1, const char* e2, char* res){
-    /* Permet d'ajouter un nom de fichier au path pour obtenir son path absolue. */
     int t1 = 0;
     int t2 = 0;
     while(e1[t1] != '\0'){
@@ -30,19 +30,19 @@ void path_formatting(const char* e1, const char* e2, char* res){
     res[t1+t2] = '\0';
 }
 
+/*  Copie un fichier source vers un fichier cible.  */
 void file_copy(const char* source, const char* target){
-    /* Copie un fichier source vers un fichier cible. */
     int file1 = open(source, O_RDONLY);
     if(file1 == -1){
         perror("Erreur lors de l'ouverture du fichier source: ");
-        exit(EXIT_FAILURE);
+        return;
     }
     int file2 = open(target, O_WRONLY | O_CREAT | O_EXCL);
     if(file2 == -1){
         if(errno != 17){    // Erreur donc on arrête.
             perror("Erreur lors de l'ouverture du fichier cible: ");
             close(file1);
-            exit(EXIT_FAILURE);
+            return;
         }
         else{   // Le fichier existe déjà donc on le passe.
             perror("Erreur lors de l'ouverture du fichier cible: ");
@@ -57,7 +57,7 @@ void file_copy(const char* source, const char* target){
         }
         close(file1);
         close(file2);
-        exit(EXIT_FAILURE);
+        return;
     }
     int taille = buffer.st_size;
     ssize_t nb_by;
@@ -69,7 +69,7 @@ void file_copy(const char* source, const char* target){
             }
             close(file1);
             close(file2);
-            exit(EXIT_FAILURE);
+            return;
         }
     }
     if(chmod(target, buffer.st_mode) == -1){
@@ -79,18 +79,18 @@ void file_copy(const char* source, const char* target){
         }
         close(file1);
         close(file2);
-        exit(EXIT_FAILURE);
+        return;
     }
     close(file1);
     close(file2);
 }
 
+/*  Copie un répertoire source vers un répertoire cible.  */
 void directory_copy(const char* source, const char* target){
-    /* Copie un répertoire source vers un répertoire cible. */
     DIR* dirS = opendir(source);
     if(dirS == NULL){
         perror("Erreur lors de l'ouverture du répertoire source: ");
-        exit(EXIT_FAILURE);
+        return;
     }
     DIR* dirC = opendir(target);
     if(dirC == NULL){   // On vérifie que le répertoire cible existe.
@@ -99,18 +99,18 @@ void directory_copy(const char* source, const char* target){
             if(stat(source, &bufferS) == -1){
                 perror("Erreur lors de la récupération des permissions du fichier source");
                 closedir(dirS);
-                exit(EXIT_FAILURE);
+                return;
             }
             if(mkdir(target, bufferS.st_mode) == -1){
                 perror("Erreur lors du changement des permissions du répertoire cible");
                 closedir(dirS);
-                exit(EXIT_FAILURE);
+                return;
             }
         }
         else{   // Autre erreur.
             perror("Erreur lors de l'ouverture du répertoire cible");
             closedir(dirS);
-            exit(EXIT_FAILURE);
+            return;
         }
     }
     else{
@@ -130,7 +130,7 @@ void directory_copy(const char* source, const char* target){
                 free(path2);
                 perror("Erreur lors de la récupération des permissions du fichier source: ");
                 closedir(dirS);
-                exit(EXIT_FAILURE);
+                return;
             }
             if(S_ISDIR(buffer.st_mode)){    // Si l'élément est un autre répertoire.
                 if(mkdir(path2, 0777) == -1){   // On vérifie qu'on ai les permissions.
@@ -139,7 +139,7 @@ void directory_copy(const char* source, const char* target){
                         free(path2);
                         perror("Erreur lors de la création du répertoire: ");
                         closedir(dirS);
-                        exit(EXIT_FAILURE);
+                        return;
                     }
                 }
                 directory_copy(path1, path2);   // On appelle récursivement la fonction de copy de répertoire.
@@ -147,7 +147,7 @@ void directory_copy(const char* source, const char* target){
                     free(path1);
                     free(path2);
                     perror("Erreur lors du changement des permissions du répertoire ");
-                    exit(EXIT_FAILURE);
+                    return;
                 }
             }
             else{   // Si c'est un fichier.
@@ -158,26 +158,6 @@ void directory_copy(const char* source, const char* target){
         }
     }
     closedir(dirS);
-}
-
-void copy(const char* source, const char* target){
-    /* Copie une source vers une cible que ça soit un fichier ou un répertoire. */
-    
-    // Je reset le errno car il était set à autre chose lorsque je faisais deux copy d'affiler
-    // (Il doit y avoir un truc à régler quelque part mais je ne sais pas)
-    errno = 0;
-    DIR* dirS = opendir(source);
-    printf("source = %s\n", source);
-    if(errno == 20){ // La source n'est pas un répertoire.
-        closedir(dirS);
-        file_copy(source, target);
-    } else if (errno != 0){   // Sinon c'est une autre erreur.
-        closedir(dirS);
-        fprintf(stderr, "cp: %s\n", strerror(errno));
-    } else{ // Sinon c'est un répertoire.
-        closedir(dirS);
-        directory_copy(source, target);
-    }
 }
 
 #endif
