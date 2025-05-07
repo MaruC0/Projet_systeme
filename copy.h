@@ -11,7 +11,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-/*  Permet d'ajouter un nom de fichier au path pour obtenir son path absolue.  */
+/*  Permet d'ajouter un nom de fichier au chemin pour obtenir le chemin absolu du fichier.  */
 void path_formatting(const char* e1, const char* e2, char* res){
     int t1 = 0;
     int t2 = 0;
@@ -61,7 +61,7 @@ void file_copy(const char* source, const char* target){
     }
     int taille = buffer.st_size;
     ssize_t nb_by;
-    while((nb_by = copy_file_range(file1, NULL, file2, NULL, taille, 0)) != 0){     // Copy un bloc dans file2.                                                 , 
+    while((nb_by = copy_file_range(file1, NULL, file2, NULL, taille, 0)) != 0){     // Copie un bloc de taille "taille" du fichier source dans le fichier cible.                                                 , 
         if(nb_by == -1){
             perror("Erreur lors de l'écriture dans le fichier cible: ");
             if(remove(target) == -1){
@@ -97,7 +97,7 @@ void directory_copy(const char* source, const char* target){
         if(errno == 2){     // Si le répertoire cible n'existe pas.
             struct stat bufferS;
             if(stat(source, &bufferS) == -1){
-                perror("Erreur lors de la récupération des permissions du fichier source");
+                perror("Erreur lors de la récupération des permissions du répertoire source");
                 closedir(dirS);
                 return;
             }
@@ -133,7 +133,7 @@ void directory_copy(const char* source, const char* target){
                 return;
             }
             if(S_ISDIR(buffer.st_mode)){    // Si l'élément est un autre répertoire.
-                if(mkdir(path2, 0777) == -1){   // On vérifie qu'on ai les permissions.
+                if(mkdir(path2, 0777) == -1){   // On vérifie qu'on aie les permissions.
                     if(errno != 17){
                         free(path1);
                         free(path2);
@@ -142,7 +142,7 @@ void directory_copy(const char* source, const char* target){
                         return;
                     }
                 }
-                directory_copy(path1, path2);   // On appelle récursivement la fonction de copy de répertoire.
+                directory_copy(path1, path2);   // On appelle récursivement la fonction de copie de répertoire.
                 if(chmod(path2, buffer.st_mode) == -1){     // On copie les permissions du répertoire.
                     free(path1);
                     free(path2);
