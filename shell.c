@@ -45,14 +45,37 @@ bool compare(char* str1, char* str2){
 }
 
 /*  Redirige les entrées et sorties du processus courant
-    selon les chevrons présents dans la ligne de commande  */
-void setIO(char *args[], int nbargs){
+    selon les chevrons présents dans la ligne de commande.
+    Renvoie 1 si c'était une redirection de void, 0 sinon.  */
+int setIO(char *args[], int nbargs){
+    int skip_first = 0;
+    //printf("args[0][0] = %s\n", args[1]);
+    if(args[0][0] == '>'){  // Si on output la fonction void.
+        int trunc = open(args[1], O_RDWR | O_CREAT | O_TRUNC, 0777);    // on écrase le fichier.
+        close(trunc);
+        if(nbargs > 2){     // S'il y a une autre instruction, on continue.
+            skip_first = 2;
+        }
+        else{               // Sinon, on s'arrête.
+            return 1;
+        }
+    }
+    else if(args[0][0] == '<'){     // Si on input dans la fonction void
+        if(nbargs > 2){     // S'il y a une autre instruction, on continue.
+            skip_first = 2;
+        }
+        else{               // Sinon, on s'arrête.
+            return 1;
+        }
+    }
     int fdi = -2, fdo = -2;
-    for (int i=1; i<nbargs; i++){
+    for (int i=1+skip_first; i<nbargs; i++){
         if(args[i][0] == '<' && nbargs > i+1){
             fdi = open(args[i+1], O_RDWR | O_CREAT | O_TRUNC, 0777);
+            args[i] = NULL;
         } else if(args[i][0] == '>' && nbargs > i+1){
             fdo = open(args[i+1], O_RDWR | O_CREAT | O_TRUNC, 0777);
+            args[i] = NULL;
         }
     }
     if (fdi >= 0){
@@ -67,6 +90,87 @@ void setIO(char *args[], int nbargs){
     } else if(fdo == -1){
         printf("erreur fdo: %s\n", strerror(errno));
     }
+    return 0;
+}
+
+/*  Free toutes les cases de args  */
+void free_case(char** args, int nbargs){
+    for(int i=0; i<=nbargs; i+=1){
+        free(args[i]);
+    }
+}
+
+/*  Alloue un nouveau tableau d'args dans lequel tous les < et les > sont dans leur propre case.
+    Renvoie NULL s'il y a une erreur de syntaxe  */
+char** seperateIO(char* tab[], int nbargs_before_separation, int* nbargs){
+    int hidden_redirection_count = 0;
+    for(int i = 0; i < nbargs_before_separation; i+=1){     // On compte le nombre de redirection pour allouer un nouveau tableau.
+        int j = 0;
+        while(tab[i][j] != '\0'){
+            if((tab[i][j] == '<' || tab[i][j] == '>') && (tab[i][j+1] != '\0' || j != 0)){
+                hidden_redirection_count += 2;
+            }
+            j+=1;
+        }
+    }
+    *nbargs = nbargs_before_separation+hidden_redirection_count;
+    char** args = malloc(sizeof(char*)*(*nbargs+1));
+    int ibs = 0;
+    int ias = 0;
+    bool following = false;     // Pour détécter les erreurs de syntaxe.
+    while(ibs < nbargs_before_separation){
+        int jbs = 0;
+        int jas = 0;
+        args[ias] = malloc(sizeof(char)*(strlen(tab[ibs])+1));   // Obligé d'avoir une string de base pour travailler sur les caractères un par un.
+        bool detected = false;
+        while(tab[ibs][jbs] != '\0'){
+            detected = false;
+            if(tab[ibs][jbs] == '<' || tab[ibs][jbs] == '>'){   // S'il y a une redirection
+                if(following){  // Si deux redirections se suivent.
+                    fprintf(stderr, "syntax error near unexpected token `%c'\n", tab[ibs][jbs]);
+                    free_case(args, ias);
+                    free(args);
+                    return NULL;
+                }
+                if(jbs != 0){       // Si c'est pas le premier caractère        ex: ab<cd
+                    args[ias][jas] = '\0';
+                    args[ias+1] = malloc(sizeof(char)*2);
+                    args[ias+1][0] = tab[ibs][jbs];
+                    args[ias+1][1] = '\0';
+                    args[ias+2] = malloc(sizeof(char)*(strlen(tab[ibs])+1));
+                    ias += 2;
+                    jas = 0;
+                    detected = true;    // Pour éviter les erreurs d'incrémentation de ias dans le cas où il y a rien après.      ex: ab<
+                }
+                else if(tab[ibs][jbs+1] != '\0'){   // Sinon, on vérifie qu'il n'est pas seul.         ex: <cd
+                    args[ias][jas] = tab[ibs][jbs];
+                    args[ias][jas+1] = '\0';
+                    args[ias+1] = malloc(sizeof(char)*(strlen(tab[ibs])+1));
+                    ias += 1;
+                    jas = 0;
+                }
+                else{   // Sinon, c'est une redirection qui est déjà dans sa propre case.
+                    args[ias][jas] = tab[ibs][jbs];
+                    jas +=1;
+                }
+                following = true;
+            }
+            else{   // Si ce n'est pas une redirection
+                args[ias][jas] = tab[ibs][jbs];
+                jas += 1;
+                following = false;
+            }
+            jbs += 1;
+        }
+        if(!detected){
+            args[ias][jas] = '\0';
+            ias += 1;
+        }
+        ibs += 1;
+    }
+    args[ias] = NULL;
+    *nbargs = ias;
+    return args;
 }
 
 /*  Affiche le path actuel, demande une entrée,
@@ -148,20 +252,30 @@ pid_t str_to_pid(const char* input){
 void exec_command(char* line, bool background){
 
     // Parsage de la ligne de commande sur les espaces et les retours à la ligne
-    char** args = malloc((strlen(line)+1) * sizeof(char*));
-    uint nbargs = getArgs(args, line, " \n");
+    char** args_before_seperation = malloc((strlen(line)+1) * sizeof(char*));
+    uint nbargs_before_separation = getArgs(args_before_seperation, line, " \n");
 
     // Gestion de l'entrée vide ou avec uniquement des espaces
-    if(nbargs == 0){
+    if(nbargs_before_separation == 0){
         return;
     }
 
     // Gère les entrées sorties si il y a des redirections
-    setIO(args, nbargs);
-
+    int nbargs = 0;
+    char** args = seperateIO(args_before_seperation, nbargs_before_separation, &nbargs);
+    free(args_before_seperation);
+    if(args == NULL){
+        return;
+    }
+    if(setIO(args, nbargs)){
+        free_case(args, nbargs);
+        free(args);
+        return;
+    }
     char* command = args[0];
 
     if(strcmp(command, "exit") == 0) {
+        free_case(args, nbargs);
         free(args);
         exit(0);
     } else if(strcmp("cd", command) == 0) {
@@ -243,6 +357,7 @@ void exec_command(char* line, bool background){
             } else {
                 fprintf(stderr, "%s: command not found\n", command);
             }
+            free_case(args, nbargs);
             free(args);
             if(last_path != NULL) free(last_path);
             exit(127);
@@ -267,7 +382,7 @@ void exec_command(char* line, bool background){
     // Force l'affichage des autres processus avant de rétablir la sortie standard
     fflush(stdout);
     dup2(shell_stdout, STDOUT_FILENO);
-
+    free_case(args, nbargs);
     free(args);
 }
 
@@ -323,7 +438,7 @@ void exec_command_line(char* line, size_t size){
                 last_non_space -= 1;
             }
             if(pipes[i][last_non_space] == '&'){
-                fprintf(stderr, "syntax error near unexpected token '|'\n");
+                fprintf(stderr, "syntax error near unexpected token `|'\n");
                 return;
             }
         }
