@@ -46,30 +46,36 @@ bool compare(char* str1, char* str2){
 
 /*  Redirige les entrées et sorties du processus courant
     selon les chevrons présents dans la ligne de commande.
-    Renvoie 1 si c'était une redirection de void, 0 sinon.  */
-int setIO(char *args[], int nbargs){
-    int skip_first = 0;
+    Renvoie un tableau de deux int indiquant s'il y a une
+    redirection du void et des instructions qui suivent et
+    s'il s'agissait d'une redirection de void seule respectivement.  */
+int* setIO(char *args[], int nbargs){
+    int* retour = malloc(sizeof(int)*2);
+    retour[0] = 0;  // skip premier ou pas
+    retour[1] = 0;  // Seulement instruction vide
     //printf("args[0][0] = %s\n", args[1]);
     if(args[0][0] == '>'){  // Si on output la fonction void.
         int trunc = open(args[1], O_RDWR | O_CREAT | O_TRUNC, 0777);    // on écrase le fichier.
         close(trunc);
         if(nbargs > 2){     // S'il y a une autre instruction, on continue.
-            skip_first = 2;
+            retour[0] = 1;
         }
         else{               // Sinon, on s'arrête.
-            return 1;
+            retour[1] = 1;
+            return retour;
         }
     }
     else if(args[0][0] == '<'){     // Si on input dans la fonction void
         if(nbargs > 2){     // S'il y a une autre instruction, on continue.
-            skip_first = 2;
+            retour[0] = 1;
         }
         else{               // Sinon, on s'arrête.
-            return 1;
+            retour[1] = 1;
+            return retour;
         }
     }
     int fdi = -2, fdo = -2;
-    for (int i=1+skip_first; i<nbargs; i++){
+    for (int i=1+(retour[0]*2); i<nbargs; i++){
         if(args[i][0] == '<' && nbargs > i+1){
             fdi = open(args[i+1], O_RDWR | O_CREAT | O_TRUNC, 0777);
             args[i] = NULL;
@@ -90,7 +96,7 @@ int setIO(char *args[], int nbargs){
     } else if(fdo == -1){
         printf("erreur fdo: %s\n", strerror(errno));
     }
-    return 0;
+    return retour;
 }
 
 /*  Free toutes les cases de args  */
@@ -260,23 +266,37 @@ void exec_command(char* line, bool background){
         return;
     }
 
-    // Gère les entrées sorties si il y a des redirections
-    int nbargs = 0;
-    char** args = seperateIO(args_before_seperation, nbargs_before_separation, &nbargs);
+    // Gère les entrées sorties s'il y a des redirections
+    int nbargs_before_adjustement = 0;
+    char** args_before_adjustement = seperateIO(args_before_seperation, nbargs_before_separation, &nbargs_before_adjustement);
     free(args_before_seperation);
-    if(args == NULL){
+    if(args_before_adjustement == NULL){
         return;
     }
-    if(setIO(args, nbargs)){
-        free_case(args, nbargs);
-        free(args);
+    int* set = setIO(args_before_adjustement, nbargs_before_adjustement);
+    if(set[1]){    // Il n'y a qu'une redirection de la fonction void.
+        free(set);
+        free_case(args_before_adjustement, nbargs_before_adjustement);
+        free(args_before_adjustement);
         return;
     }
+    char** args;
+    int nbargs;
+    if(set[0]){    // Il y a des commandes qui suivent la redirection de la fonction void donc on coupe pour que execvp comprenne.
+        printf("ICI\n");
+        nbargs = nbargs_before_adjustement-2;
+        args = &args_before_adjustement[2];
+    }
+    else{
+        nbargs = nbargs_before_adjustement;
+        args = args_before_adjustement;
+    }
+    free(set);
     char* command = args[0];
 
     if(strcmp(command, "exit") == 0) {
-        free_case(args, nbargs);
-        free(args);
+        free_case(args_before_adjustement, nbargs_before_adjustement);
+        free(args_before_adjustement);
         exit(0);
     } else if(strcmp("cd", command) == 0) {
         if(nbargs > 2){
@@ -357,8 +377,8 @@ void exec_command(char* line, bool background){
             } else {
                 fprintf(stderr, "%s: command not found\n", command);
             }
-            free_case(args, nbargs);
-            free(args);
+            free_case(args_before_adjustement, nbargs_before_adjustement);
+            free(args_before_adjustement);
             if(last_path != NULL) free(last_path);
             exit(127);
         } else{
@@ -382,8 +402,8 @@ void exec_command(char* line, bool background){
     // Force l'affichage des autres processus avant de rétablir la sortie standard
     fflush(stdout);
     dup2(shell_stdout, STDOUT_FILENO);
-    free_case(args, nbargs);
-    free(args);
+    free_case(args_before_adjustement, nbargs_before_adjustement);
+    free(args_before_adjustement);
 }
 
 /*  Crée un processus qui va exécuter une commande simple
